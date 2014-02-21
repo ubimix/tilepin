@@ -1,0 +1,11 @@
+*.mml.xml
+/node_modules
+*.dump
+*.cache
+*.pbf
+*.index
+*.shp
+*.shx
+*.zip
+*.prj
+*.dbf
