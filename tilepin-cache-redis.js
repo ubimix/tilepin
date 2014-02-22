@@ -52,7 +52,6 @@ _.extend(RedisCache.prototype, {
     _invoke : function(method, sourceKey, tileArgs, headersArgs) {
         tileArgs = [ sourceKey ].concat(tileArgs);
         headersArgs = [ 'h:' + sourceKey ].concat(headersArgs);
-        console.log(headersArgs);
         return Q.all([ this._invokeClient(method, tileArgs),
                 this._invokeClient(method, headersArgs) ]);
     },
