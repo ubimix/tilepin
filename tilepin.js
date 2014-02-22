@@ -1,6 +1,8 @@
 var _ = require('underscore');
 var Path = require('path')
+var Url = require('url');
 var FS = require('fs');
+var Crypto = require('crypto');
 
 var Q = require('q');
 var Tilelive = require('tilelive');
@@ -8,7 +10,8 @@ require('tilelive-mapnik').registerProtocols(Tilelive);
 var LRU = require('lru-cache');
 
 var CartoJsonCss = require('./carto-json-css');
-var Carto = require('carto')
+var Carto = require('carto');
+var AdmZip = require('adm-zip');
 
 /**
  * 
@@ -144,6 +147,71 @@ _.extend(CachingTiles.prototype, {
         return fullPath;
     },
 
+    _findDataIndex : function(dir, url) {
+        return Q.nfcall(FS.readdir, dir).then(function(list) {
+            var result = null;
+            _.each(list, function(file) {
+                if (file.lastIndexOf('.shp') > 0) {
+                    result = Path.join(dir, file);
+                }
+            })
+            return result;
+        })
+    },
+
+    _downloadAndUnzip : function(url, dir) {
+        var that = this;
+        var shasum = Crypto.createHash('sha1');
+        shasum.update(url);
+        var hash = shasum.digest('hex');
+        var dataDir = Path.join(dir, '.tmp-' + hash);
+        var dataFileName = Path.join(dataDir, hash);
+
+        return Q().then(function() {
+            if (!FS.existsSync(dataFileName)) {
+                return that._download(dataFileName, url)
+            }
+        }).then(function() {
+            return that._unzip(dataFileName, dataDir);
+        });
+    },
+
+    _download : function(dataFileName, url) {
+        var dataDir = Path.dirname(dataFileName);
+        function f() {
+        }
+        return Q.nfcall(FS.mkdir, dataDir).then(f, f).then(function() {
+            var diferred = Q.defer();
+            var http = require('http');
+            var file = FS.createWriteStream(dataFileName);
+            try {
+                var request = http.get(url, function(response) {
+                    try {
+                        response.pipe(file);
+                        file.on('finish', function() {
+                            file.close();
+                            diferred.resolve(true);
+                        });
+                    } catch (e) {
+                        diferred.reject(e);
+                    }
+                });
+            } catch (e) {
+                diferred.reject(e);
+            }
+            return diferred.promise;
+        });
+    },
+
+    _unzip : function(zipFile, dataDir) {
+        var zip = new AdmZip(zipFile);
+        var zipEntries = zip.getEntries(); // an array of ZipEntry records
+        return Q.all(_.map(zipEntries, function(zipEntry) {
+            var file = Path.join(dataDir, zipEntry.entryName);
+            zip.extractEntryTo(zipEntry.entryName, dataDir, true, true);
+        }));
+    },
+
     /**
      * @param mmlFile
      * @param xmlFile
@@ -152,28 +220,50 @@ _.extend(CachingTiles.prototype, {
      */
     _buildXmlStyleFile : function(mmlFile, xmlFile, params) {
         var that = this;
-        return Q().then(function() {
-            return Q.nfcall(FS.readFile, mmlFile, 'utf8');
-        }).then(function(str) {
-            // var options = this.options || {};
-            // str = _.template(str, options)
-            return JSON.parse(str);
-        }).then(function(styleJSON) {
-            var dir = Path.dirname(mmlFile);
+        var dir = Path.dirname(mmlFile);
+        function downloadRemoteFiles(styleJSON) {
+            return Q.all(_.map(styleJSON.Layer, function(dataLayer) {
+                if (!dataLayer.Datasource)
+                    return;
+                var url = dataLayer.Datasource.file;
+                if (!url)
+                    return;
+                if (url.match(/^https?:\/\/.*$/gim)) {
+                    return that._downloadAndUnzip(url, dir).then(function() {
+                        return that._findDataIndex(dataDir, url);
+                    }).then(function(fileName) {
+                        return fileName;
+                    }).then(function(filePath) {
+                        dataLayer.Datasource.file = filePath;
+                    })
+                }
+            }))
+        }
+        function loadMmlStyles(styleJSON) {
             return Q.all(_.map(styleJSON.Stylesheet, function(stylesheet) {
                 return that._loadMmlStyle(dir, stylesheet);
             })).then(function(styles) {
                 styleJSON.Stylesheet = styles;
                 return styleJSON;
             });
-        }).then(function(styleJSON) {
-            var renderer = new Carto.Renderer({
-                filename : xmlFile,
-                local_data_dir : Path.dirname(xmlFile),
+        }
+        return Q().then(function() {
+            return Q.nfcall(FS.readFile, mmlFile, 'utf8');
+        }).then(function(str) {
+            // var options = this.options || {};
+            // str = _.template(str, options)
+            return JSON.parse(str);
+        }).then(function(json) {
+            return Q.all([ downloadRemoteFiles(json), loadMmlStyles(json) ])//
+            .then(function() {
+                var renderer = new Carto.Renderer({
+                    filename : xmlFile,
+                    local_data_dir : Path.dirname(xmlFile),
+                });
+                var deferred = Q.defer();
+                renderer.render(json, deferred.makeNodeResolver());
+                return deferred.promise;
             });
-            var deferred = Q.defer();
-            renderer.render(styleJSON, deferred.makeNodeResolver());
-            return deferred.promise;
         }).then(function(xml) {
             return Q.nfcall(FS.writeFile, xmlFile, xml);
         });
@@ -192,7 +282,7 @@ _.extend(CachingTiles.prototype, {
             var css = stylesheet.cartocss;
             if (_.isObject(stylesheet.cartocss)) {
                 var converter = new CartoJsonCss.CartoCssSerializer();
-                var css = converter.serialize(stylesheet.cartocss);
+                css = converter.serialize(stylesheet.cartocss);
             }
             stylesheet.data = css;
             delete stylesheet.cartocss;

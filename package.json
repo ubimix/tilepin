@@ -25,7 +25,8 @@
         "q" : "*",
         "lru-cache" : "*",
         "redis" : "*",
-        "hiredis" : "*"
+        "hiredis" : "*",
+        "adm-zip" : "*"
     },
     "devDependencies" : {
         "mocha" : "*"
