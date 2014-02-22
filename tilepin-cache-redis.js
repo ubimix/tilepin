@@ -4,6 +4,7 @@ var Q = require('q');
 var _ = require('underscore');
 var LRU = require('lru-cache');
 var Redis = require('redis');
+var Zlib = require('zlib');
 
 /**
  * 
@@ -51,25 +52,35 @@ _.extend(RedisCache.prototype, {
     _invoke : function(method, sourceKey, tileArgs, headersArgs) {
         tileArgs = [ sourceKey ].concat(tileArgs);
         headersArgs = [ 'h:' + sourceKey ].concat(headersArgs);
+        console.log(headersArgs);
         return Q.all([ this._invokeClient(method, tileArgs),
                 this._invokeClient(method, headersArgs) ]);
     },
     _convertJsonToBuffer : function(obj) {
         if (!obj)
-            return null;
-        var result = new Buffer(JSON.stringify(obj), 'utf8')
-        return result;
+            return Q();
+        return Q.nfcall(Zlib.gzip, JSON.stringify(obj)).then(function(result) {
+            return result;
+        })
     },
     _convertBufferToJson : function(buf) {
         if (!buf)
-            return null;
-        var str = buf.toString('utf8');
-        var result = JSON.parse(str);
-        return result;
+            return Q();
+        return Q.nfcall(Zlib.gunzip, buf).then(function(buf) {
+            var str = buf.toString('utf8');
+            var result = JSON.parse(str);
+            return result;
+        })
     },
     _isJson : function(headers) {
         return headers
                 && headers['Content-Type'] == 'text/javascript; charset=utf-8';
+    },
+    _toTile : function(tile, headers) {
+        return {
+            tile : tile,
+            headers : headers
+        }
     },
     reset : function(sourceKey, tileKey) {
         if (!tileKey || tileKey == '') {
@@ -80,32 +91,46 @@ _.extend(RedisCache.prototype, {
     },
     get : function(sourceKey, tileKey) {
         var that = this;
-        return that._invoke('hget', sourceKey, [ tileKey ], [ tileKey ])
-                .spread(function(tileBlob, headersBlob) {
+        return that._invoke('hget', sourceKey, [ tileKey ], [ tileKey ]).then(
+                function(arr) {
+                    var tileBlob = arr[0];
+                    var headersBlob = arr[1];
                     if (!tileBlob || !headersBlob)
                         return null;
-                    var headers = that._convertBufferToJson(headersBlob);
-                    var tile = tileBlob;
-                    if (that._isJson(headers)) {
-                        tile = that._convertBufferToJson(tileBlob);
-                    }
-                    return {
-                        tile : tile,
-                        headers : headers
-                    };
+                    return that._convertBufferToJson(headersBlob).then(
+                            function(headers) {
+                                if (!that._isJson(headers)) {
+                                    return that._toTile(tileBlob, headers);
+                                }
+                                return that._convertBufferToJson(tileBlob)
+                                        .then(function(tile) {
+                                            return that._toTile(tile, headers);
+                                        });
+                            })
                 })
     },
     set : function(sourceKey, tileKey, tile) {
         var that = this;
-        var headersBlob = that._convertJsonToBuffer(tile.headers);
-        var tileBlob = tile.tile;
-        if (that._isJson(tile.headers)) {
-            tileBlob = that._convertJsonToBuffer(tile.tile);
-        }
-        return that._invoke('hset', sourceKey, [ tileKey, tileBlob ],
-                [ tileKey, headersBlob ]).spread(function(tilesOk, headersOk) {
-            return tilesOk && headersOk;
-        });
+        return that._convertJsonToBuffer(tile.headers).then(
+                function(headersBlob) {
+                    var promise;
+                    if (!that._isJson(tile.headers)) {
+                        promise = Q(tile.tile);
+                    } else {
+                        promise = that._convertJsonToBuffer(tile.tile);
+                    }
+                    return promise.then(function(tileBlob) {
+                        return that
+                                ._invoke('hset', sourceKey,
+                                        [ tileKey, tileBlob ],
+                                        [ tileKey, headersBlob ]).then(
+                                        function(arr) {
+                                            var tilesOk = arr[0];
+                                            var headersOk = arr[1];
+                                            return tilesOk && headersOk;
+                                        });
+                    })
+                })
     },
 })
 
