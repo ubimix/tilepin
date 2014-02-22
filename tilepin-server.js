@@ -7,7 +7,7 @@ var TilepinRedisCache = require('./tilepin-cache-redis');
 
 var port = 8888;
 var options = TilepinRedisCache.initTileServerCacheOptions({
-    styleDir : __dirname
+    styleDir : './'
 });
 var tileProvider = new Tilepin(options);
 
