@@ -1,7 +1,7 @@
 (function(context) {
     $(function() {
-        var projectIdField = $('#projectId');
-        var btn = $('#projectIdSubmit');
+        var projectIdField = $('#projectPath');
+        var btn = $('#projectPathSubmit');
 
         var center = [ 48.857487002645485, 2.3455810546875 ];
         var zoom = 12;

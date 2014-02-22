@@ -3,15 +3,15 @@ var Q = require('q');
 var _ = require('underscore');
 var app = express();
 var Tilepin = require('./tilepin');
-var TilepinRedisCache = require('./tilepin/tilepin-cache-redis');
+var TilepinRedisCache = require('./tilepin-cache-redis');
 
+var port = 8888;
 var options = TilepinRedisCache.initTileServerCacheOptions({
-    styleDir : './'
+    styleDir : __dirname
 });
 var tileProvider = new Tilepin(options);
 
 var promise = Q();
-
 promise = promise
 //
 .then(function initApplication(tileSource) {
@@ -23,7 +23,8 @@ promise = promise
         app.use(express.static(__dirname + '/'));
     });
 
-    app.get('/invalidate/:source', function(req, res) {
+    var mask = '/tiles/invalidate/:source([^]+)'
+    app.get(mask, function(req, res) {
         tileProvider.invalidateStyle({
             source : req.param('source')
         }).then(function(result) {
@@ -33,21 +34,24 @@ promise = promise
         }).done();
     });
 
-    app.get('/:source/:z/:x/:y.:format(png|grid.json)', function(req, res) {
-        tileProvider.getTile({
-            source : req.param('source'),
-            format : req.param.format,
+    mask = '/tiles/:source([^]+)/:z/:x/:y.:format(png|grid.json)';
+    app.get(mask, function(req, res) {
+        var conf = {
+            source : req.params.source,
+            format : req.params.format,
             z : req.params.z,
             x : +req.params.x,
             y : +req.params.y,
-        }).then(function(result) {
+        };
+        tileProvider.getTile(conf).then(function(result) {
             sendReply(res, 200, result.tile, result.headers);
         }).fail(function(err) {
             sendError(res, err);
         }).done();
     });
-    app.listen(8888);
-    console.log('Listening on port: ' + 8888);
+
+    app.listen(port);
+    console.log('Listening on port: ' + port);
     return true;
 })
 //    

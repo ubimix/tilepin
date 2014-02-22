@@ -140,7 +140,7 @@ _.extend(CachingTiles.prototype, {
     },
 
     _getTileSourceFile : function(sourceKey, fileName) {
-        var dir = this.options.styleDir || __dirname;
+        var dir = this.options.dir || this.options.styleDir || __dirname;
         dir = Path.join(dir, sourceKey);
         dir = Path.resolve(dir);
         var fullPath = Path.join(dir, fileName);
