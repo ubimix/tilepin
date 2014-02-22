@@ -6,9 +6,13 @@ var Tilepin = require('./tilepin');
 var TilepinRedisCache = require('./tilepin-cache-redis');
 
 var port = 8888;
-var options = TilepinRedisCache.initTileServerCacheOptions({
+var redisOptions = {};
+var tileCache = new TilepinRedisCache(redisOptions);
+var options = {
+    tileCache : tileCache,
     styleDir : './'
-});
+};
+// options = {};
 var tileProvider = new Tilepin(options);
 
 var promise = Q();
@@ -87,7 +91,11 @@ function sendError(res, err) {
     if (matches = errMsg.match("(.*) in style 'layer([0-9]+)'")) {
         errMsg = 'style' + matches[2] + ': ' + matches[1];
     }
-    sendReply(res, statusCode, errMsg, {});
+    var result = {
+        msg : errMsg,
+        stack : err.stack
+    }
+    sendReply(res, statusCode, result);
 }
 
 function sendReply(res, statusCode, content, headers) {

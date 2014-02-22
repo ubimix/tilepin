@@ -9,12 +9,14 @@ var Redis = require('redis');
  * 
  * @param options.keyPrefix
  *            prefix for all keys
- * @param options.redis.client -
- *            a Redis client to use OR
+ * @param options.redisClient -
+ *            a Redis client to use
  * @param options.redis.port
- *            a Redis port (6379 by default)
+ *            a Redis port (6379 by default); this parameter is used only if the
+ *            options.redisClient is not defined
  * @param options.redis.host
- *            a Redis host ('127.0.0.1' by default)
+ *            a Redis host ('127.0.0.1' by default); this parameter is used only
+ *            if the options.redisClient is not defined
  */
 function RedisCache(options) {
     this.options = options || {};
@@ -35,64 +37,75 @@ _.extend(RedisCache.prototype, {
         client.quit();
         return Q();
     },
-    _invokeClient : function(method, id) {
+    _invokeClient : function(method, args) {
         var deferred = Q.defer();
         try {
-            var args = _.toArray(arguments);
-            args.splice(0, 2);
-            args = _.toArray(id).concat(args);
             args.push(deferred.makeNodeResolver());
-            if (_.isString(method)) {
-                method = this.client[method];
-            }
+            method = this.client[method];
             method.apply(this.client, args);
         } catch (e) {
             deferred.reject(e);
         }
         return deferred.promise;
     },
-    _getKey : function(key) {
-        var prefix = this.options.keyPrefix || '';
-        key = _.toArray(key);
-        var id = prefix + key[0];
-        key.splice(0, 1);
-        var result = [id];
-        if (key.length){
-            result.push(key.join('/'));
-        }
+    _invoke : function(method, sourceKey, tileArgs, headersArgs) {
+        tileArgs = [ sourceKey ].concat(tileArgs);
+        headersArgs = [ 'h:' + sourceKey ].concat(headersArgs);
+        return Q.all([ this._invokeClient(method, tileArgs),
+                this._invokeClient(method, headersArgs) ]);
+    },
+    _convertJsonToBuffer : function(obj) {
+        if (!obj)
+            return null;
+        var result = new Buffer(JSON.stringify(obj), 'utf8')
         return result;
     },
-    _valueToBuf : function(value) {
-        if (!value)
-            return null;
-        return new Buffer(JSON.stringify(value), 'utf8');
-    },
-    _bufToValue : function(buf) {
+    _convertBufferToJson : function(buf) {
         if (!buf)
             return null;
-        var str = buf.toString();
-        return JSON.parse(str);
+        var str = buf.toString('utf8');
+        var result = JSON.parse(str);
+        return result;
     },
-    reset : function(key) {
-        var id = this._getKey(key);
-        if (id.length == 1) {
-            return this._invokeClient('del', id);
+    _isJson : function(headers) {
+        return headers
+                && headers['Content-Type'] == 'text/javascript; charset=utf-8';
+    },
+    reset : function(sourceKey, tileKey) {
+        if (!tileKey || tileKey == '') {
+            return this._invoke('del', sourceKey, [], []);
         } else {
-            return this._invokeClient('hdel', id);
+            return this._invoke('hdel', sourceKey, [ tileKey ], [ tileKey ]);
         }
     },
-    get : function(key) {
+    get : function(sourceKey, tileKey) {
         var that = this;
-        var id = that._getKey(key);
-        return that._invokeClient('hget', id).then(function(buf) {
-            return that._bufToValue(buf);
-        });
+        return that._invoke('hget', sourceKey, [ tileKey ], [ tileKey ])
+                .spread(function(tileBlob, headersBlob) {
+                    if (!tileBlob || !headersBlob)
+                        return null;
+                    var headers = that._convertBufferToJson(headersBlob);
+                    var tile = tileBlob;
+                    if (that._isJson(headers)) {
+                        tile = that._convertBufferToJson(tileBlob);
+                    }
+                    return {
+                        tile : tile,
+                        headers : headers
+                    };
+                })
     },
-    set : function(key, value) {
+    set : function(sourceKey, tileKey, tile) {
         var that = this;
-        var id = that._getKey(key);
-        var buf = that._valueToBuf(value);
-        return that._invokeClient('hset', id, buf);
+        var headersBlob = that._convertJsonToBuffer(tile.headers);
+        var tileBlob = tile.tile;
+        if (that._isJson(tile.headers)) {
+            tileBlob = that._convertJsonToBuffer(tile.tile);
+        }
+        return that._invoke('hset', sourceKey, [ tileKey, tileBlob ],
+                [ tileKey, headersBlob ]).spread(function(tilesOk, headersOk) {
+            return tilesOk && headersOk;
+        });
     },
 })
 
@@ -107,32 +120,6 @@ RedisCache.newRedisClient = function(options) {
         });
         return Redis.createClient(port, host, redisOptions);
     }
-}
-
-RedisCache.initTileServerCacheOptions = function(options) {
-    var redisClient = RedisCache.newRedisClient(options)
-    return _.extend({}, options, {
-        tileCache : new RedisCache({
-            redisClient : redisClient,
-            keyPrefix : 'tiles:',
-            valueToBuf : function(value) {
-                if (value && !Buffer.isBuffer(value)) {
-                    value = new Buffer(value);
-                }
-                return value;
-            },
-            bufToValue : function(buf) {
-                if (buf && !Buffer.isBuffer(buf)) {
-                    buf = new Buffer(buf);
-                }
-                return buf;
-            }
-        }),
-        headersCache : new RedisCache({
-            redisClient : redisClient,
-            keyPrefix : 'headers:'
-        })
-    })
 }
 
 module.exports = RedisCache;

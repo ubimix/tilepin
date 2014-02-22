@@ -27,56 +27,39 @@ var AdmZip = require('adm-zip');
  */
 function CachingTiles(options) {
     this.options = options;
-    this.sourceCache = new CachingTiles.MemCache({
+    this.sourceCache = new LRU({
         maxAge : this._getTileSourceCacheTTL()
     });
     this.tileCache = options.tileCache || new CachingTiles.MemCache();
-    this.headersCache = options.headersCache || new CachingTiles.MemCache();
 }
 _.extend(CachingTiles.prototype, {
 
     invalidateStyle : function(params) {
         var that = this;
-        return Q().then(
-                function() {
-                    var cacheKey = that._getTileCacheKey(params);
-                    return Q.all([ that.tileCache.reset(cacheKey),
-                            that.headersCache.reset(cacheKey) ])
-                }).then(function() {
-            var cacheKey = that._getTileSourceCacheKey(params);
-            return that.sourceCache.reset(cacheKey);
+        return Q()//
+        .then(function() {
+            var key = that._getTileCacheKey(params);
+            return that.tileCache.reset(params.source, key);
+        }) //
+        .then(function() {
+            var key = that._getTileSourceCacheKey(params);
+            return that.sourceCache.del(key);
         })
     },
 
     getTile : function(params) {
         var that = this;
+        var sourceKey = params.source;
         var cacheKey = that._getTileCacheKey(params);
-        function loadFromCache() {
-            return Q.all(
-                    [ that.tileCache.get(cacheKey),
-                            that.headersCache.get(cacheKey) ]).then(
-                    function(arr) {
-                        if (arr[0] && arr[1]) {
-                            return {
-                                tile : arr[0],
-                                headers : arr[1]
-                            }
-                        }
-                        return null;
-                    });
-        }
-        function storeToCache(result) {
-            return Q.all(
-                    [ that.tileCache.set(cacheKey, result.tile),
-                            that.headersCache.set(cacheKey, result.headers) ])
-                    .then(function() {
-                        return result;
-                    });
-        }
-        return loadFromCache().then(function(result) {
+        return that.tileCache.get(sourceKey, cacheKey).then(function(result) {
             if (result)
                 return result;
-            return that.loadTile(params).then(storeToCache);
+            return that.loadTile(params).then(function(result) {
+                return that.tileCache.set(sourceKey, cacheKey, result) //
+                .then(function() {
+                    return result;
+                });
+            });
         });
     },
 
@@ -107,18 +90,14 @@ _.extend(CachingTiles.prototype, {
     },
 
     close : function() {
+        this.sourceCache.reset();
         var array = [];
-        if (this.sourceCache.close)
-            array.push(this.sourceCache.close());
         if (this.tileCache.close)
             array.push(this.tileCache.close());
-        if (this.headersCache.close)
-            array.push(this.headersCache.close());
         return Q(array);
     },
 
     _getTileCacheKey : function(params) {
-        var source = params.source;
         var x = +params.x;
         var y = +params.y;
         var zoom = params.z;
@@ -132,11 +111,7 @@ _.extend(CachingTiles.prototype, {
                 array.push(n);
             }
         })
-        var cacheKey = [ source ];
-        if (array.length) {
-            cacheKey.push(array.join('-'));
-        }
-        return cacheKey;
+        return array.join('-');
     },
 
     _getTileSourceFile : function(sourceKey, fileName) {
@@ -328,59 +303,48 @@ _.extend(CachingTiles.prototype, {
     },
     _getTileSource : function(params) {
         var that = this;
-        var cacheKey = this._getTileSourceCacheKey(params);
-        return that.sourceCache.get(cacheKey).then(
-                function(tileSource) {
-                    if (tileSource) {
-                        return tileSource;
-                    }
-                    // Load tileSource and set it in thecache
-                    return that._loadTileSource(params).then(
-                            function(tileSource) {
-                                return that.sourceCache.set(cacheKey,
-                                        tileSource).then(function() {
-                                    return tileSource;
-                                });
-                            });
-                })
+        var sourceKey = params.source;
+        return Q().then(function() {
+            var tileSource = that.sourceCache.get(sourceKey);
+            if (tileSource) {
+                return tileSource;
+            }
+            // Load tileSource and set it in the cache
+            return that._loadTileSource(params).then(function(tileSource) {
+                that.sourceCache.set(sourceKey, tileSource);
+                return tileSource;
+            });
+        })
     },
-
 })
 CachingTiles.MemCache = function(options) {
     this.options = options || {};
     this.cache = new LRU(this.options);
 }
 _.extend(CachingTiles.MemCache.prototype, {
-    _getCache : function(key) {
-        var name = key[0];
-        var result = this.cache.get(name);
-        if (!result) {
-            result = new LRU(this.options);
-            this.cache.set(name, result);
+    reset : function(sourceKey, tileKey) {
+        if (tileKey && tileKey != '') {
+            var cache = this.cache.get(sourceKey);
+            if (cache) {
+                cache.del(tileKey);
+            }
+        } else {
+            this.cache.del(sourceKey);
         }
-        return result;
-    },
-    _getKeyId : function(key) {
-        key = _.toArray(key).join('/');
-        return key;
-    },
-    reset : function(key) {
-        key = _.toArray(key);
-        var name = key[0];
-        this.cache.del(name);
         return Q();
     },
-    get : function(key) {
-        key = _.toArray(key);
-        var cache = this._getCache(key);
-        var id = this._getKeyId(key);
-        return Q(cache.get(id));
+    get : function(sourceKey, tileKey) {
+        var cache = this.cache.get(sourceKey);
+        var result = cache ? cache.get(tileKey) : undefined;
+        return Q(result);
     },
-    set : function(key, value) {
-        key = _.toArray(key);
-        var cache = this._getCache(key);
-        var id = this._getKeyId(key);
-        return Q(cache.set(id, value));
+    set : function(sourceKey, tileKey, tile) {
+        var cache = this.cache.get(sourceKey);
+        if (!cache) {
+            cache = new LRU(this.options);
+            this.cache.set(sourceKey, cache);
+        }
+        return Q(cache.set(tileKey, tile));
     },
 })
 

@@ -1,6 +1,6 @@
 {
     "name" : "tilepin",
-    "version" : "0.0.1",
+    "version" : "0.0.2",
     "main" : "tilepin.js",
     "description" : "Tilepin caching server",
     "url" : "http://github.com/ubimix/tilepin",
