@@ -36,14 +36,30 @@ _.extend(CachingTiles.prototype, {
 
     invalidateStyle : function(params) {
         var that = this;
+        var sourceKey = params.source;
         return Q()//
         .then(function() {
             var key = that._getTileCacheKey(params);
-            return that.tileCache.reset(params.source, key);
+            return that.tileCache.reset(sourceKey, key);
         }) //
         .then(function() {
             var key = that._getTileSourceCacheKey(params);
             return that.sourceCache.del(key);
+        })//
+        .then(function() {
+            var xmlTilepinFile = that._getTilepinProjectFile(sourceKey);
+            if (!FS.existsSync(xmlTilepinFile))
+                return true;
+            return Q.nfcall(FS.unlink, xmlTilepinFile).then(function() {
+                return true;
+            }, function(e) {
+                // Just log errors...
+                var msg = 'Can not remove ' + 'the "';
+                msg += xmlTilepinFile;
+                msg += '" project file';
+                console.log(msg, e);
+                return true;
+            });
         })
     },
 
@@ -265,18 +281,25 @@ _.extend(CachingTiles.prototype, {
         }
     },
 
+    _getTilepinProjectFile : function(sourceKey) {
+        return this._getTileSourceFile(sourceKey, 'project.tilepin.xml');
+    },
+
     _prepareTileSourceFile : function(params) {
         var that = this;
         var sourceKey = params.source;
         var mmlFile = that._getTileSourceFile(sourceKey, 'project.mml');
         var xmlFile = that._getTileSourceFile(sourceKey, 'project.xml');
+        var xmlTilepinFile = that._getTilepinProjectFile(sourceKey);
         var promise;
         if (FS.existsSync(xmlFile)) {
             return Q(xmlFile);
+        } else if (FS.existsSync(xmlTilepinFile)) {
+            return Q(xmlTilepinFile);
         } else {
-            return that._buildXmlStyleFile(mmlFile, xmlFile, params).then(
-                    function() {
-                        return xmlFile;
+            return that._buildXmlStyleFile(mmlFile, xmlTilepinFile, params)
+                    .then(function() {
+                        return xmlTilepinFile;
                     });
         }
     },
