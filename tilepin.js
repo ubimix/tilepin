@@ -37,16 +37,23 @@ _.extend(CachingTiles.prototype, {
     invalidateStyle : function(params) {
         var that = this;
         var sourceKey = params.source;
-        return Q()//
-        .then(function() {
-            var key = that._getTileCacheKey(params);
-            return that.tileCache.reset(sourceKey, key);
-        }) //
-        .then(function() {
-            var key = that._getTileSourceCacheKey(params);
-            return that.sourceCache.del(key);
-        })//
-        .then(function() {
+        return Q().then(function() {
+            var key = that._getTileCacheKey(params, 'tile');
+            if (!key) {
+                return that.tileCache.reset(sourceKey);
+            } else {
+                return that.tileCache.reset(sourceKey, key).then(function() {
+                    var key = that._getTileCacheKey(params, 'grid');
+                    return that.tileCache.reset(sourceKey, key);
+                });
+            }
+        }).then(function() {
+            var tileSource = that.sourceCache.get(sourceKey);
+            that.sourceCache.del(sourceKey)
+            if (tileSource) {
+                return Q.ninvoke(tileSource, 'close');
+            }
+        }).then(function() {
             var xmlTilepinFile = that._getTilepinProjectFile(sourceKey);
             if (!FS.existsSync(xmlTilepinFile))
                 return true;
@@ -66,7 +73,11 @@ _.extend(CachingTiles.prototype, {
     getTile : function(params) {
         var that = this;
         var sourceKey = params.source;
-        var cacheKey = that._getTileCacheKey(params);
+        var format;
+        if (params.format && params.format != '') {
+            format = params.format === 'grid.json' ? 'grid' : 'tile';
+        }
+        var cacheKey = that._getTileCacheKey(params, format);
         return that.tileCache.get(sourceKey, cacheKey).then(function(result) {
             if (result)
                 return result;
@@ -113,21 +124,23 @@ _.extend(CachingTiles.prototype, {
         return Q(array);
     },
 
-    _getTileCacheKey : function(params) {
+    _getTileCacheKey : function(params, format) {
         var x = +params.x;
         var y = +params.y;
         var zoom = params.z;
-        var format;
-        if (params.format && params.format != '') {
-            format = params.format === 'grid.json' ? 'grid' : 'tile';
-        }
         var array = [];
-        _.each([ format, zoom, x, y ], function(n) {
+        _.each([ zoom, x, y ], function(n) {
             if (n) {
                 array.push(n);
             }
         })
-        return array.join('-');
+        var key = array.join('-');
+        if (key != '') {
+            key = format + '-' + key;
+        } else {
+            key = undefined;
+        }
+        return key;
     },
 
     _getTileSourceFile : function(sourceKey, fileName) {
@@ -320,9 +333,6 @@ _.extend(CachingTiles.prototype, {
 
     _getTileSourceCacheTTL : function() {
         return this.options.tileSourceCacheTTL || 60 * 60 * 1000;
-    },
-    _getTileSourceCacheKey : function(params) {
-        return [ params.source ];
     },
     _getTileSource : function(params) {
         var that = this;

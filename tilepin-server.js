@@ -3,16 +3,19 @@ var Q = require('q');
 var _ = require('underscore');
 var app = express();
 var Tilepin = require('./tilepin');
-var TilepinRedisCache = require('./tilepin-cache-redis');
+var TilepinCache = require('./tilepin-cache-redis');
+// var TilepinCache = require('./tilepin-cache-mbtiles');
 
 var port = 8888;
-var redisOptions = {};
-var tileCache = new TilepinRedisCache(redisOptions);
+var cacheOptions = {};
+var tileCache = new TilepinCache(cacheOptions);
 var options = {
     tileCache : tileCache,
     styleDir : './'
 };
-// options = {};
+// If there is no cache defined - then an in-memory default cache is created
+// automatically.
+// options = { styleDir : './' };
 var tileProvider = new Tilepin(options);
 
 var promise = Q();
