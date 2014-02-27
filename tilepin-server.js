@@ -7,15 +7,13 @@ var TilepinCache = require('./tilepin-cache-redis');
 // var TilepinCache = require('./tilepin-cache-mbtiles');
 
 var port = 8888;
-var cacheOptions = {};
-var tileCache = new TilepinCache(cacheOptions);
+var redisOptions = {};
+var tileCache = new TilepinCache(redisOptions);
 var options = {
     tileCache : tileCache,
     styleDir : './'
 };
-// If there is no cache defined - then an in-memory default cache is created
-// automatically.
-// options = { styleDir : './' };
+// options = {};
 var tileProvider = new Tilepin(options);
 
 var promise = Q();
@@ -35,9 +33,9 @@ promise = promise
         tileProvider.invalidateStyle({
             source : req.param('source')
         }).then(function(result) {
-            sendReply(res, 200, 'OK');
+            sendReply(req, res, 200, 'OK');
         }).fail(function(err) {
-            sendError(res, err);
+            sendError(req, res, err);
         }).done();
     });
 
@@ -51,9 +49,9 @@ promise = promise
             y : +req.params.y,
         };
         tileProvider.getTile(conf).then(function(result) {
-            sendReply(res, 200, result.tile, result.headers);
+            sendReply(req, res, 200, result.tile, result.headers);
         }).fail(function(err) {
-            sendError(res, err);
+            sendError(req, res, err);
         }).done();
     });
 
@@ -81,7 +79,7 @@ process.on('SIGTERM', function() {
     }).done();
 });
 
-function sendError(res, err) {
+function sendError(req, res, err) {
     var statusCode = 400;
     var errMsg = err.message ? ('' + err.message) : ('' + err);
     if (-1 != errMsg.indexOf('permission denied')) {
@@ -98,13 +96,20 @@ function sendError(res, err) {
         msg : errMsg,
         stack : err.stack
     }
-    sendReply(res, statusCode, result);
+    sendReply(req, res, statusCode, result);
 }
 
-function sendReply(res, statusCode, content, headers) {
+function sendReply(req, res, statusCode, content, headers) {
     res.status(statusCode);
     _.each(headers, function(value, key) {
         res.setHeader(key, value);
     })
-    res.send(content);
+    var callback = req.query.callback;
+    if (callback == '')
+        callback = null;
+    if (callback && !Buffer.isBuffer(content)) {
+        res.send(callback + '(' + JSON.stringify(content) + ');');
+    } else {
+        res.send(content);
+    }
 }
