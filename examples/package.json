@@ -1,0 +1,32 @@
+{
+    "name" : "tilepin",
+    "version" : "0.0.2",
+    "main" : "tilepin.js",
+    "description" : "Tilepin caching server",
+    "url" : "http://github.com/ubimix/tilepin",
+    "keywords" : [ "map", "server", "mapnik" ],
+    "licenses" : [ {
+        "type" : "BSD"
+    } ],
+    "repository" : {
+        "type" : "git",
+        "url" : "http://github.com/tilepin/tilepin.git"
+    },
+    "contributors" : [ {
+        "name" : "Mikhail Kotelnikov",
+        "email" : "mikhail.kotelnikov"
+    } ],
+    "dependencies" : {
+        "underscore" : "*",
+        "express" : "*",
+        "tilepin" : "git://github.com/ubimix/tilepin.git"
+    },
+    "scripts" : {
+        "start" : "node ./node_modules/tilepin/tilepin-server.js"
+    },
+    "devDependencies" : {},
+    "engines" : {
+        "node" : "*"
+    },
+    "homepage" : "https://github.com/ubimix/tilepin-example"
+}
