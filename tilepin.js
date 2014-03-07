@@ -163,20 +163,37 @@ _.extend(CachingTiles.prototype, {
         })
     },
 
+    _getSha1 : function(str) {
+        var shasum = Crypto.createHash('sha1');
+        shasum.update(str);
+        var hash = shasum.digest('hex');
+        return hash;
+    },
     _downloadAndUnzip : function(url, dir) {
         var that = this;
-        var shasum = Crypto.createHash('sha1');
-        shasum.update(url);
-        var hash = shasum.digest('hex');
-        var dataDir = Path.join(dir, '.tmp-' + hash);
-        var dataFileName = Path.join(dataDir, hash);
-
+        var obj = Url.parse(url);
+        var ext = Path.extname(obj.pathname);
+        var path = Path.basename(obj.pathname, ext) || '.tmp-'
+                + that._getSha1(url);
+        var dataDir = Path.join(dir, path);
+        var dataFileName = Path.join(dataDir, Path.basename(obj.pathname));
         return Q().then(function() {
+            var segments = dataDir.split('/');
+            var p = '';
+            _.each(segments, function(segment) {
+                p = (p == '' && segment == '') ? '/' : Path.join(p, segment);
+                if (!FS.existsSync(p)) {
+                    FS.mkdirSync(p);
+                }
+            });
+        }).then(function() {
             if (!FS.existsSync(dataFileName)) {
                 return that._download(dataFileName, url)
             }
         }).then(function() {
             return that._unzip(dataFileName, dataDir);
+        }).then(function() {
+            return dataDir;
         });
     },
 
@@ -216,6 +233,19 @@ _.extend(CachingTiles.prototype, {
         }));
     },
 
+    _getDbCredentials : function(params, datasource) {
+        var that = this;
+        return Q().then(function() {
+            var sourceKey = params.source;
+            if (_.isFunction(that.options.db)) {
+                return that.options.db(sourceKey, datasource);
+            } else {
+                var dbOptions = that.options.db || {};
+                return dbOptions[sourceKey];
+            }
+        })
+    },
+
     /**
      * @param mmlFile
      * @param xmlFile
@@ -225,21 +255,35 @@ _.extend(CachingTiles.prototype, {
     _buildXmlStyleFile : function(mmlFile, xmlFile, params) {
         var that = this;
         var dir = Path.dirname(mmlFile);
+        var layersDir = Path.join(dir, 'layers');
+        function prepareFileSource(dataLayer) {
+            var url = dataLayer.Datasource.file;
+            if (!url.match(/^https?:\/\/.*$/gim)) {
+                return Q();
+            }
+            return that._downloadAndUnzip(url, layersDir).then(
+                    function(dataDir) {
+                        return that._findDataIndex(dataDir, url);
+                    }).then(function(filePath) {
+                dataLayer.Datasource.file = filePath;
+                dataLayer.Datasource.type = 'shape';
+            })
+        }
+        function prepareDbSource(dataLayer) {
+            return that._getDbCredentials(params, dataLayer.Datasource).then(
+                    function(data) {
+                        _.extend(dataLayer.Datasource, data);
+                    });
+        }
         function downloadRemoteFiles(styleJSON) {
             return Q.all(_.map(styleJSON.Layer, function(dataLayer) {
                 if (!dataLayer.Datasource)
                     return;
                 var url = dataLayer.Datasource.file;
-                if (!url)
-                    return;
-                if (url.match(/^https?:\/\/.*$/gim)) {
-                    return that._downloadAndUnzip(url, dir).then(function() {
-                        return that._findDataIndex(dataDir, url);
-                    }).then(function(fileName) {
-                        return fileName;
-                    }).then(function(filePath) {
-                        dataLayer.Datasource.file = filePath;
-                    })
+                if (url) {
+                    return prepareFileSource(dataLayer);
+                } else if (dataLayer.Datasource.type == 'postgis') {
+                    return prepareDbSource(dataLayer);
                 }
             }))
         }

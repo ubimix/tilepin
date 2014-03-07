@@ -9,10 +9,14 @@ var TilepinCache = require('./tilepin-cache-redis');
 var port = 8888;
 var redisOptions = {};
 var tileCache = new TilepinCache(redisOptions);
+var workdir = process.cwd();
 var options = {
     tileCache : tileCache,
-    styleDir : './'
+    styleDir : workdir
 };
+
+console.log(workdir);
+
 // options = {};
 var tileProvider = new Tilepin(options);
 
@@ -25,7 +29,7 @@ promise = promise
             res.setHeader("Access-Control-Allow-Origin", "*");
             return next();
         });
-        app.use(express.static(__dirname + '/'));
+        app.use(express.static(workdir + '/'));
     });
 
     var mask = '/tiles/invalidate/:source([^]+)'
