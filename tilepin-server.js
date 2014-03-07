@@ -14,9 +14,6 @@ var options = {
     tileCache : tileCache,
     styleDir : workdir
 };
-
-console.log(workdir);
-
 // options = {};
 var tileProvider = new Tilepin(options);
 
