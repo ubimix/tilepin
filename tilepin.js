@@ -6,12 +6,22 @@ var Crypto = require('crypto');
 
 var Q = require('q');
 var Tilelive = require('tilelive');
-require('tilelive-mapnik').registerProtocols(Tilelive);
+var TileliveMapnik = require('tilelive-mapnik');
+var VectorTile = require('tilelive-vector');
+var TileBridge = require('tilelive-bridge');
 var LRU = require('lru-cache');
-
+var mercator = new (require('sphericalmercator'));
 var CartoJsonCss = require('./carto-json-css');
 var Carto = require('carto');
 var AdmZip = require('adm-zip');
+
+// Protocols registration
+TileliveMapnik.registerProtocols(Tilelive);
+VectorTile.registerProtocols(Tilelive);
+// Register a fake protocol allowing to return the control to the renderer
+Tilelive.protocols['tilepin:'] = function(options, callback) {
+    callback(null, options.source);
+};
 
 /**
  * 
@@ -361,18 +371,81 @@ _.extend(CachingTiles.prototype, {
         }
     },
 
+    _getVectorTileSource : function(baseDir, xml) {
+        var deferred = Q.defer();
+        try {
+            console.log('baseDir:', baseDir);
+            new TileBridge({
+                xml : xml,
+                base : baseDir
+            }, function(err, bridge) {
+                if (err) {
+                    deferred.reject(err);
+                } else {
+                    deferred.resolve(bridge);
+                }
+            });
+        } catch (e) {
+            deferred.reject(e);
+        }
+        return deferred.promise;
+    },
+
+    _getVectorTileSource1 : function(baseDir, xml) {
+        var that = this;
+        return {
+            getTile : function(z, x, y, callback) {
+                var mapnik = VectorTile.mapnik;
+                var map = new mapnik.Map(256, 256);
+                map.resize(meta.width, meta.height);
+                map.extent = meta.bbox;
+                return Q.ninvoke(map, 'fromString', xml, {
+                    base : baseDir
+                }).then(function(map) {
+                    map.bufferSize = 256;
+                    var vtile = new mapnik.VectorTile(z, x, y);
+                    var bbox = mercator //
+                    .bbox(x, y, z, false, '900913');
+                    map.extent = bbox;
+                    return Q.ninvoke(map, 'render', vtile);
+                }).then(function(vtile) {
+                    callback(null, vtile);
+                }, function(err) {
+                    callback(err);
+                }).done();
+            },
+            getInfo : function(callback) {
+                callback(null, {
+                    minzoom : 0,
+                    maxzoom : 22,
+                    masklevel : 10
+                });
+            }
+        }
+    },
+
     _loadTileSource : function(params) {
-        return this._prepareTileSourceFile(params).then(function(sourceFile) {
-            // See:
-            // *
-            // https://github.com/mapbox/tilemill/issues/971
-            // *
-            // https://github.com/mapbox/tilelive-mapnik/commit/c741c3ffa1afe7acfa71f89c591b835e0e70ed44
-            // *
-            // https://github.com/mapbox/tilelive-mapnik/blob/4e9cbf8347eba7c3c2b7e8fd4270ea39f9cc7af5/test/data/test.xml#L6-L7
-            var uri = 'mapnik://' + sourceFile;
-            return Q.ninvoke(Tilelive, 'load', uri);
-        })
+        var that = this;
+        var baseDir;
+        return that._prepareTileSourceFile(params).then(function(sourceFile) {
+            baseDir = Path.dirname(sourceFile);
+            return Q.ninvoke(FS, 'readFile', sourceFile, 'UTF-8');
+        }).then(
+                function(xml) {
+                    return that._getVectorTileSource(baseDir, xml).then(
+                            function(source) {
+                                var uri = {
+                                    protocol : 'vector:',
+                                    xml : xml,
+                                    base : baseDir,
+                                    source : {
+                                        protocol : 'tilepin:',
+                                        source : source
+                                    }
+                                }
+                                return Q.ninvoke(Tilelive, 'load', uri);
+                            })
+                })
     },
 
     _getTileSourceCacheTTL : function() {
