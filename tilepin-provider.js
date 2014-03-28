@@ -24,6 +24,8 @@ _.extend(TileSourceProvider.prototype, {
         this.options = options;
     },
     loadTileSource : function(params) {
+    },
+    clearTileSource : function(params) {
     }
 });
 
@@ -33,6 +35,26 @@ function TileMillSourceProvider() {
 }
 _.extend(TileMillSourceProvider.prototype, TileSourceProvider.prototype);
 _.extend(TileMillSourceProvider.prototype, {
+
+    clearTileSource : function(params) {
+        var that = this;
+        return Q().then(function() {
+            var sourceKey = params.source;
+            var xmlTilepinFile = that._getTilepinProjectFile(sourceKey);
+            if (!FS.existsSync(xmlTilepinFile))
+                return true;
+            return Q.nfcall(FS.unlink, xmlTilepinFile).then(function() {
+                return true;
+            }, function(e) {
+                // Just log errors...
+                var msg = 'Can not remove ' + 'the "';
+                msg += xmlTilepinFile;
+                msg += '" project file';
+                console.log(msg, e);
+                return true;
+            });
+        })
+    },
 
     /**
      * This method loads and returns an object contining tilesource XML and a
