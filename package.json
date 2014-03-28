@@ -32,13 +32,16 @@
         "adm-zip" : "*"
     },
     "devDependencies" : {
-        "mocha" : "*"
+        "mocha" : "*",
+        "superagent" : "*",
+        "expect.js" : "*",
+        "cheerio" : "*"
     },
     "engines" : {
         "node" : ">= 0.6.13 < 0.11.0"
     },
     "scripts" : {
-        "test" : "mocha -R spec --timeout 10000"
+        "test" : "mocha -R spec --timeout 10000 ./tests/Test*"
     },
     "readme" : "# tilepin\n\nCaching backend for [tilelive.js](http://github.com/mapbox/tilelive.js)\n",
     "readmeFilename" : "README.md",
