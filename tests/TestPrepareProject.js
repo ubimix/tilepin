@@ -2,6 +2,7 @@ var expect = require('expect.js');
 var TileSourceProvider = require('../tilepin-provider');
 var $ = require('cheerio');
 var _ = require('underscore');
+var Path = require('path');
 
 function MyType(name) {
     if (!this.id) {
@@ -14,11 +15,14 @@ MyType.prototype.sayHello = function() {
 }
 describe('Tilepin DataSource provider', function() {
 
+    var dir;
     var provider;
     beforeEach(function() {
+        var path = './tests';
+        dir = Path.resolve(process.cwd(), path);
         provider = new TileSourceProvider.TileMillProvider({
-            dir : './tests'
-        })
+            dir : dir
+        });
     });
     it('should load external files', function(done) {
         provider.loadTileSource({
@@ -29,9 +33,12 @@ describe('Tilepin DataSource provider', function() {
                     var fileElm = dom
                             .find('layer datasource parameter[name="file"]');
                     expect(fileElm[0]).not.to.be(null);
+
+                    var expectedPath = Path.resolve(dir,
+                            'project/layers/ne_110m_admin_0_countries/'
+                                    + 'ne_110m_admin_0_countries.shp');
                     expect(fileElm.contents() + '').to.eql('<!--[CDATA['
-                            + 'layers/ne_110m_admin_0_countries/'
-                            + 'ne_110m_admin_0_countries.shp' + ']]-->');
+                            + expectedPath + ']]-->');
                     // console.log(_.functions(fileElm));
                 }).fin(function() {
             done();

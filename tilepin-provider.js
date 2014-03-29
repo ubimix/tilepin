@@ -222,16 +222,25 @@ _.extend(TileMillSourceProvider.prototype, {
         var xmlDir = Path.dirname(xmlFile);
         function prepareFileSource(dataLayer) {
             var url = dataLayer.Datasource.file;
+            var promise;
             if (!url.match(/^https?:\/\/.*$/gim)) {
-                return Q();
+                promise = Q();
+            } else {
+                promise = that._downloadAndUnzip(url, layersDir).then(
+                        function(dataDir) {
+                            return that._findDataIndex(dataDir, url);
+                        }).then(function(filePath) {
+                    // dataLayer.Datasource.file = Path.relative(xmlDir,
+                    // filePath);
+                    dataLayer.Datasource.file = filePath;
+                    dataLayer.Datasource.type = 'shape';
+                });
             }
-            return that._downloadAndUnzip(url, layersDir).then(
-                    function(dataDir) {
-                        return that._findDataIndex(dataDir, url);
-                    }).then(function(filePath) {
-                dataLayer.Datasource.file = Path.relative(xmlDir, filePath);
-                dataLayer.Datasource.type = 'shape';
-            })
+            return promise.then(function(result) {
+                dataLayer.Datasource.file = Path.resolve(xmlDir,
+                        dataLayer.Datasource.file);
+                return result;
+            });
         }
         function prepareDbSource(dataLayer) {
             return that._getDbCredentials(params, dataLayer.Datasource).then(
