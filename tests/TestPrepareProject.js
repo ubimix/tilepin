@@ -3,16 +3,8 @@ var TileSourceProvider = require('../tilepin-provider');
 var $ = require('cheerio');
 var _ = require('underscore');
 var Path = require('path');
+var Q = require('q');
 
-function MyType(name) {
-    if (!this.id) {
-        this.id = 'id-' + (new Date()).getTime();
-    }
-    this.name = name;
-}
-MyType.prototype.sayHello = function() {
-    return 'Hello ' + this.name;
-}
 describe('Tilepin DataSource provider', function() {
 
     var dir;
@@ -42,9 +34,5 @@ describe('Tilepin DataSource provider', function() {
                 }).fin(function() {
             done();
         }).done();
-
-        var a = new MyType('John');
-        expect('Hello John').to.eql(a.sayHello());
-        // console.log(a.sayHello());
     })
 });

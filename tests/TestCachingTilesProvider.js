@@ -103,13 +103,13 @@ describe('Tilepin.ProjectBasedTilesProvider', function() {
             });
         })
         //
-        .then(
-                function(info) {
-                    return Q.ninvoke(FS, 'writeFile', './tile-1-0-0.png',
-                            info.tile).then(function() {
-                        return info;
-                    });
-                })
+        // .then(
+        // function(info) {
+        // return Q.ninvoke(FS, 'writeFile', './tile-1-0-0.png',
+        // info.tile).then(function() {
+        // return info;
+        // });
+        // })
         //
         .then(function(info) {
             var file = Path.resolve(dir, './expected/expected-tile-1-0-0.png');
