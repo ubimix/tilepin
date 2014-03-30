@@ -15,7 +15,12 @@ var options = {
     styleDir : workdir
 };
 // options = {};
-var tileProvider = new Tilepin(options);
+
+var dir = __dirname;
+var baseProvider = new Tilepin.ProjectBasedTilesProvider(options);
+var tileProvider = new Tilepin.CachingTilesProvider({
+    provider : baseProvider
+});
 
 var promise = Q();
 promise = promise
@@ -31,7 +36,7 @@ promise = promise
 
     var mask = '/tiles/invalidate/:source([^]+)'
     app.get(mask, function(req, res) {
-        tileProvider.invalidateStyle({
+        tileProvider.invalidate({
             source : req.param('source')
         }).then(function(result) {
             sendReply(req, res, 200, 'OK');
@@ -40,16 +45,20 @@ promise = promise
         }).done();
     });
 
-    mask = '/tiles/:source([^]+)/:z/:x/:y.:format(png|grid.json)';
+    mask = '/tiles/:source([^]+)/:z/:x/:y.:format(png|grid.json|vtile)';
     app.get(mask, function(req, res) {
+        var format = req.params.format;
+        if (format == 'grid.json') {
+            format = 'grid';
+        }
         var conf = {
             source : req.params.source,
-            format : req.params.format,
+            format : format,
             z : req.params.z,
             x : +req.params.x,
             y : +req.params.y,
         };
-        tileProvider.getTile(conf).then(function(result) {
+        tileProvider.loadTile(conf).then(function(result) {
             sendReply(req, res, 200, result.tile, result.headers);
         }).fail(function(err) {
             sendError(req, res, err);

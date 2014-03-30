@@ -48,8 +48,6 @@ _.extend(TilesProvider.prototype, {
         }
         return key;
     },
-})
-_.extend(TilesProvider, {
     _getTilesProvider : function(params, force) {
         var provider = this.options.provider || this.options.getProvider;
         if (_.isFunction(provider)) {
@@ -74,8 +72,7 @@ _.extend(LoggingTilesProvider.prototype, TilesProvider.prototype, {
     },
     getFormats : function(params) {
         return this._getTilesProvider().loadFormats(params);
-    },
-    _getTilesProvider : TilesProvider._getTilesProvider
+    }
 });
 
 function DispatchingTilesProvider(options) {
@@ -110,7 +107,6 @@ _.extend(DispatchingTilesProvider.prototype, TilesProvider.prototype, {
             return provider.getFormats(params);
         })
     },
-    _getTilesProvider : TilesProvider._getTilesProvider
 });
 
 /**
@@ -130,44 +126,49 @@ _.extend(CachingTilesProvider.prototype, TilesProvider.prototype, {
 
     invalidate : function(params) {
         var that = this;
-        return this.provider.getFormats(params).then(function(formats) {
-            var sourceKey = that._getSourceKey(params);
-            var resetAll = true;
-            return Q.all(_.map(formats, function(format) {
-                var cacheKey = that._getCacheKey(params, format);
-                if (cacheKey) {
-                    resetAll = false;
-                    return that.cache.reset(sourceKey, cacheKey);
-                }
-            })).then(function(result) {
-                if (resetAll) {
-                    return that.cache.reset(sourceKey);
-                }
-                return result;
-            })
-        });
+        return that._getTilesProvider(params).getFormats(params).then(
+                function(formats) {
+                    var sourceKey = that._getSourceKey(params);
+                    var resetAll = true;
+                    return Q.all(_.map(formats, function(format) {
+                        var cacheKey = that._getCacheKey(params, format);
+                        if (cacheKey) {
+                            resetAll = false;
+                            return that.cache.reset(sourceKey, cacheKey);
+                        }
+                    })).then(function(result) {
+                        if (resetAll) {
+                            return that.cache.reset(sourceKey);
+                        }
+                        return result;
+                    })
+                });
     },
     loadTile : function(params) {
         var that = this;
         var sourceKey = that._getSourceKey(params);
         var format = params.format;
         var cacheKey = that._getCacheKey(params, format);
-        return that.cache.get(sourceKey, cacheKey).then(function(result) {
-            if (result)
-                return result;
-            return that.provider.loadTile(params).then(function(result) {
-                return that.cache.set(sourceKey, cacheKey, result) // 
-                .then(function() {
-                    return result;
+        return that.cache.get(sourceKey, cacheKey).then(
+                function(result) {
+                    if (result)
+                        return result;
+                    return that._getTilesProvider(params).loadTile(params)
+                            .then(
+                                    function(result) {
+                                        return that.cache.set(sourceKey,
+                                                cacheKey, result) // 
+                                        .then(function() {
+                                            return result;
+                                        });
+                                    });
                 });
-            });
-        });
     },
     loadInfo : function(params) {
-        return this.provider.loadInfo(params);
+        return this._getTilesProvider(params).loadInfo(params);
     },
     getFormats : function() {
-        return this.provider.getFormats();
+        return this._getTilesProvider(params).getFormats();
     },
     _getCacheKey : function(params, prefix) {
         var x = +params.x;
@@ -191,6 +192,14 @@ _.extend(CachingTilesProvider.prototype, TilesProvider.prototype, {
 
 })
 
+function replaceProjection(str) {
+    return str.replace(/srs=".*?"/gim, function(match) {
+        return 'srs="+proj=merc ' + '+a=6378137 +b=6378137 '
+                + '+lat_ts=0.0 +lon_0=0.0 ' + '+x_0=0.0 +y_0=0.0 +k=1.0 '
+                + '+units=m +nadgrids=@null ' + '+wktext +no_defs +over"';
+    });
+
+}
 function ProjectBasedTilesProvider(options) {
     this.options = options || {};
     this.tileSourceProvider = new TileSourceProvider.TileMillProvider(
@@ -251,6 +260,7 @@ _.extend(ProjectBasedTilesProvider.prototype, TilesProvider.prototype, {
         var suffix = this._isVectorTiles(params) ? '-vector' : '-tile';
         return this._getSourceKey(params, suffix);
     },
+    // Load a tileSource and set it in the cache
     _getTileSource : function(params) {
         var that = this;
         var suffix = undefined;
@@ -276,9 +286,25 @@ _.extend(ProjectBasedTilesProvider.prototype, TilesProvider.prototype, {
         });
     },
     _newTileliveSource : function(params, uri) {
-        // Load tileSource and set it in the cache
         uri.protocol = 'mapnik:';
         return Q.ninvoke(Tilelive, 'load', uri);
+    },
+
+    _newTileliveSource1 : function(params, uri) {
+        var that = this;
+        return that._getTileSource(_.extend({}, params, {
+            format : 'vtile'
+        })).then(function(vtileSource) {
+            var tilesUri = _.extend({}, uri, {
+                protocol : 'vector:',
+                source : {
+                    protocol : 'tilepin:',
+                    source : vtileSource
+                }
+            });
+            tilesUri.xml = replaceProjection(tilesUri.xml);
+            return Q.ninvoke(Tilelive, 'load', tilesUri);
+        });
     },
     _newTileBridge : function(params, uri) {
         var that = this;
@@ -331,8 +357,7 @@ _.extend(VectorTilesProvider.prototype, TilesProvider.prototype, {
                 return null;
             return provider.getFormats(params);
         })
-    },
-    _getTilesProvider : TilesProvider._getTilesProvider
+    }
 });
 
 function MemCache(options) {
