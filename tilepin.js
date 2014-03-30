@@ -177,7 +177,10 @@ var TilesProvider = {
     },
     getFormats : function(params) {
         return this.options.formats || this.formats || [];
-    }
+    },
+    _getSourceKey : function(params) {
+        return params.source;
+    },
 }
 
 function DispatchingTilesProvider(options) {
@@ -230,12 +233,12 @@ function CachingTilesProvider(options) {
     this.cache = options.cache || new MemCache();
     this.provider = options.provider;
 }
-_.extend(CachingTilesProvider.prototype, {
+_.extend(CachingTilesProvider.prototype, TilesProvider, {
 
     invalidate : function(params) {
         var that = this;
         return this.provider.getFormats(params).then(function(formats) {
-            var sourceKey = params.source;
+            var sourceKey = that._getSourceKey(params);
             var resetAll = true;
             return Q.all(_.map(formats, function(format) {
                 var cacheKey = that._getCacheKey(params, format);
@@ -253,7 +256,7 @@ _.extend(CachingTilesProvider.prototype, {
     },
     loadTile : function(params) {
         var that = this;
-        var sourceKey = params.source;
+        var sourceKey = that._getSourceKey(params);
         var format = params.format;
         var cacheKey = that._getCacheKey(params, format);
         return that.cache.get(sourceKey, cacheKey).then(function(result) {
@@ -287,10 +290,16 @@ function ProjectBasedTilesProvider(options) {
         maxAge : this._getTileSourceCacheTTL()
     });
 }
-_.extend(ProjectBasedTilesProvider.prototype, {
+_.extend(ProjectBasedTilesProvider.prototype, TilesProvider, {
 
     invalidate : function(params) {
-        return this.tileSourceProvider.clearTileSource(params);
+        var promises = [];
+        promises.push(this.tileSourceProvider.clearTileSource(params));
+        var sourceKey = this._getSourceKey(params);
+        if (sourceKey) {
+            this.sourceCache.del(sourceKey);
+        }
+        return Q.all(promises);
     },
     loadTile : function(params) {
         return this._getTileSource(params).then(function(tileSource) {
@@ -336,7 +345,7 @@ _.extend(ProjectBasedTilesProvider.prototype, {
     },
     _getTileSource : function(params) {
         var that = this;
-        var sourceKey = params.source;
+        var sourceKey = that._getSourceKey(params);
         return Q().then(function() {
             var tileSource = that.sourceCache.get(sourceKey);
             if (tileSource) {

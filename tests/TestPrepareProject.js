@@ -39,7 +39,6 @@ describe('Tilepin DataSource provider', function() {
                                     + 'ne_110m_admin_0_countries.shp');
                     expect(fileElm.contents() + '').to.eql('<!--[CDATA['
                             + expectedPath + ']]-->');
-                    // console.log(_.functions(fileElm));
                 }).fin(function() {
             done();
         }).done();

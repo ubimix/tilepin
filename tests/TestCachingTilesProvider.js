@@ -4,6 +4,7 @@ var $ = require('cheerio');
 var _ = require('underscore');
 var Q = require('q');
 var FS = require('fs');
+var Path = require('path');
 
 function TestTilesProvider(options) {
     this.options = options;
@@ -20,8 +21,10 @@ _.extend(TestTilesProvider.prototype, Tilepin.TilesProvider, {
     }
 });
 
-describe('Tilepin', function() {
-    it('should load external files', function(done) {
+describe('Tilepin.CachingTilesProvider '
+        + 'and Tilepin.DispatchingTilesProvider', function() {
+
+    it('should handle caching and dispatching', function(done) {
         var providers = {
             projectOne : new TestTilesProvider({
                 name : 'one'
@@ -45,7 +48,8 @@ describe('Tilepin', function() {
             format : 'foo'
         }
         return Q()
-        // The first call hits the original source of tiles. Cache is not used.
+        // The first call hits the original source of tiles. Cache is
+        // not used.
         .then(function() {
             return provider.loadTile(params).then(function(result) {
                 expect(result).to.eql('one');
@@ -60,7 +64,8 @@ describe('Tilepin', function() {
                 expect(providers.projectOne.getHits()).to.eql(1);
             });
         })
-        // Reset cache and load tiles again. It should hit the original source.
+        // Reset cache and load tiles again. It should hit the original
+        // source.
         .then(function() {
             return provider.invalidate(params).then(function() {
                 return provider.loadTile(params).then(function(result) {
@@ -73,9 +78,13 @@ describe('Tilepin', function() {
         .fin(done).done();
     })
 
-    it('should load external files', function(done) {
+});
+
+describe('Tilepin.ProjectBasedTilesProvider', function() {
+    it('should generate image tiles', function(done) {
+        var dir = __dirname;
         var provider = new Tilepin.ProjectBasedTilesProvider({
-            dir : './tests'
+            dir : dir
         });
         Q().then(function() {
             return provider.invalidate({
@@ -90,8 +99,12 @@ describe('Tilepin', function() {
                 format : 'tile'
             });
         }).then(function(info) {
-            var file = './tile-1-0-0.png';
-            return Q.ninvoke(FS, 'writeFile', file, info.tile);
+            var file = Path.resolve(dir, './expected/expected-tile-1-0-0.png');
+            return Q.ninvoke(FS, 'readFile', file).then(function(buf) {
+                var first = info.tile.toString('hex');
+                var second = buf.toString('hex');
+                expect(first).to.eql(second);
+            })
         }).fin(done).done();
     });
 
