@@ -6,6 +6,9 @@ var Q = require('q');
 var FS = require('fs');
 var Path = require('path');
 
+function getHash(buf) {
+    return require('crypto').createHash('sha1').update(buf).digest('hex')
+}
 describe('Tilepin.CachingTilesProvider, ' + 'Tilepin.DispatchingTilesProvider '
         + 'and Tilepin.ProjectBasedTilesProvider', function() {
     it('should generate image tiles', function(done) {
@@ -38,8 +41,8 @@ describe('Tilepin.CachingTilesProvider, ' + 'Tilepin.DispatchingTilesProvider '
         }).then(function(info) {
             var file = Path.resolve(dir, './expected/expected-tile-1-0-0.png');
             return Q.ninvoke(FS, 'readFile', file).then(function(buf) {
-                var first = info.tile.toString('hex');
-                var second = buf.toString('hex');
+                var first = getHash(info.tile);
+                var second = getHash(buf);
                 expect(first).to.eql(second);
             })
         }).fin(done).done();

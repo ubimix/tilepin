@@ -9,7 +9,7 @@ var Path = require('path');
 function TestTilesProvider(options) {
     this.options = options;
 }
-_.extend(TestTilesProvider.prototype, Tilepin.TilesProvider, {
+_.extend(TestTilesProvider.prototype, Tilepin.TilesProvider.prototype, {
     formats : [ 'foo' ],
     loadTile : function(params) {
         this._hits = this._hits || 0;
@@ -80,6 +80,9 @@ describe('Tilepin.CachingTilesProvider '
 
 });
 
+function getHash(buf) {
+    return require('crypto').createHash('sha1').update(buf).digest('hex')
+}
 describe('Tilepin.ProjectBasedTilesProvider', function() {
     it('should generate image tiles', function(done) {
         var dir = __dirname;
@@ -101,8 +104,8 @@ describe('Tilepin.ProjectBasedTilesProvider', function() {
         }).then(function(info) {
             var file = Path.resolve(dir, './expected/expected-tile-1-0-0.png');
             return Q.ninvoke(FS, 'readFile', file).then(function(buf) {
-                var first = info.tile.toString('hex');
-                var second = buf.toString('hex');
+                var first = getHash(info.tile);
+                var second = getHash(buf);
                 expect(first).to.eql(second);
             })
         }).fin(done).done();
