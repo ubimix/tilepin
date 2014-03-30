@@ -225,7 +225,9 @@ _.extend(ProjectBasedTilesProvider.prototype, TilesProvider.prototype, {
         });
     },
     loadInfo : function(params) {
-        return this.provider.loadInfo(params);
+        return this._getTileSource(params).then(function(tileSource) {
+            return Q.ninvoke(tileSource, 'getInfo');
+        });
     },
     getFormats : function() {
         return Q([ 'grid', 'tile', 'vtile' ]);
