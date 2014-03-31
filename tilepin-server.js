@@ -2,6 +2,7 @@ var express = require('express');
 var Q = require('q');
 var _ = require('underscore');
 var app = express();
+var Url = require('url');
 var Tilepin = require('./tilepin');
 var TilepinCache = require('./tilepin-cache-redis');
 // var TilepinCache = require('./tilepin-cache-mbtiles');
@@ -11,6 +12,7 @@ var redisOptions = {};
 var tileCache = new TilepinCache(redisOptions);
 var workdir = process.cwd();
 var options = {
+    useVectorTiles : true,
     tileCache : tileCache,
     styleDir : workdir
 };
@@ -19,7 +21,9 @@ var options = {
 var dir = __dirname;
 var baseProvider = new Tilepin.ProjectBasedTilesProvider(options);
 var tileProvider = new Tilepin.CachingTilesProvider({
-    provider : baseProvider
+    provider : function(params, force) {
+        return baseProvider;
+    }
 });
 
 var promise = Q();
@@ -28,13 +32,15 @@ promise = promise
 .then(function initApplication(tileSource) {
     app.configure(function() {
         app.use(function(req, res, next) {
-            res.setHeader("Access-Control-Allow-Origin", "*");
+            res.setHeader('Access-Control-Allow-Origin', '*');
             return next();
         });
         app.use(express.static(workdir + '/'));
     });
 
-    var mask = '/tiles/invalidate/:source([^]+)'
+    var mask;
+
+    mask = '/tiles/invalidate/:source([^]+)'
     app.get(mask, function(req, res) {
         tileProvider.invalidate({
             source : req.param('source')
@@ -64,6 +70,52 @@ promise = promise
             sendError(req, res, err);
         }).done();
     });
+
+    mask = '/tiles/:source([^]+)';
+    app.get(mask, function(req, res) {
+        var format = req.param('format');
+        var source = req.param('source');
+        var fullUrl = req.protocol + '://' + req.get('host') + req.originalUrl;
+        if (fullUrl[fullUrl.length - 1] != '/') {
+            fullUrl += '/';
+        }
+        var tilesMask = Url.resolve(fullUrl, './{z}/{x}/{y}');
+        if (source[source.length - 1] == '/') {
+            source = source.substring(0, source.length - 1);
+        }
+        var options = {
+            format : format || 'vtile',
+            source : source
+        };
+        tileProvider.loadInfo(options).then(function(result) {
+            result.tilejson = "2.0.0";
+            result.format = 'pbf';
+            result.id = source;
+            result.tiles = [ tilesMask + '.vtile' ];
+            var fields = {};
+            var array = (result.interactivity_fields || '').split(',');
+            _.each(array, function(val) {
+                fields[val] = val;
+            })
+            result.vector_layers = [ {
+                description : '',
+                fields : fields,
+                maxzoom : result.maxzoom,
+                minzoom : result.minzoom,
+                id : result.interactivity_layer
+            } ]
+            // console.log(result);
+            sendReply(req, res, 200, result);
+        }).fail(function(err) {
+            sendError(req, res, err);
+        }).done();
+
+        // sendReply(req, res, 200, {
+        // tilejson : "2.0.0",
+        // tiles : [ tilesMask + '.png' ],
+        // vector_layers : [ tilesMask + '.vtile' ]
+        // })
+    })
 
     app.listen(port);
     console.log('Listening on port: ' + port);

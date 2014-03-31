@@ -268,7 +268,11 @@ _.extend(ProjectBasedTilesProvider.prototype, TilesProvider.prototype, {
         });
     },
     _newTileliveSource : function(params, uri) {
-        return this._newTileliveSource0(params, uri);
+        if (this.options.useVectorTiles){
+            return this._newTileliveSource1(params, uri);
+        } else {
+            return this._newTileliveSource0(params, uri);
+        }
     },
 
     _newTileliveSource0 : function(params, uri) {
