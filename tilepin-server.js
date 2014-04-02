@@ -13,18 +13,17 @@ var tileCache = new TilepinCache(redisOptions);
 var workdir = process.cwd();
 var options = {
     useVectorTiles : false,
-    tileCache : tileCache,
+    cache : tileCache,
     styleDir : workdir
 };
 // options = {};
 
 var dir = __dirname;
 var baseProvider = new Tilepin.ProjectBasedTilesProvider(options);
-var tileProvider = new Tilepin.CachingTilesProvider({
-    provider : function(params, force) {
-        return baseProvider;
-    }
-});
+options.provider = function(params, force) {
+    return baseProvider;
+};
+var tileProvider = new Tilepin.CachingTilesProvider(options);
 
 var promise = Q();
 promise = promise
