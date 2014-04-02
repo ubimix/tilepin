@@ -195,6 +195,8 @@ _.extend(ProjectBasedTilesProvider.prototype, TilesProvider.prototype, {
         promises.push(this.tileSourceProvider.clearTileSource(params));
         var sourceKey = this._getSourceKey(params);
         this.sourceCache.del(sourceKey);
+        sourceKey = this._getSourceKey(params, '-tile');
+        this.sourceCache.del(sourceKey);
         sourceKey = this._getSourceKey(params, '-vector');
         this.sourceCache.del(sourceKey);
         return Q.all(promises);
@@ -276,8 +278,8 @@ _.extend(ProjectBasedTilesProvider.prototype, TilesProvider.prototype, {
     },
 
     _newTileliveSource0 : function(params, uri) {
-        uri.protocol = 'mapnik:';
-        return Q.ninvoke(Tilelive, 'load', uri);
+        var url = 'mapnik://' + uri.path;
+        return Q.ninvoke(Tilelive, 'load', url);
     },
 
     _newTileliveSource1 : function(params, uri) {
@@ -310,7 +312,7 @@ _.extend(ProjectBasedTilesProvider.prototype, TilesProvider.prototype, {
         return Q().then(function() {
             var deferred = Q.defer();
             try {
-                new TileBridge(uri, function(err, bridge) {
+                new TileBridge(uri.path, function(err, bridge) {
                     if (err) {
                         deferred.reject(err);
                     } else {

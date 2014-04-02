@@ -12,7 +12,7 @@ var redisOptions = {};
 var tileCache = new TilepinCache(redisOptions);
 var workdir = process.cwd();
 var options = {
-    useVectorTiles : true,
+    useVectorTiles : false,
     tileCache : tileCache,
     styleDir : workdir
 };

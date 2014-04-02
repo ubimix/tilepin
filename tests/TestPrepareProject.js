@@ -3,6 +3,7 @@ var TileSourceProvider = require('../tilepin-provider');
 var $ = require('cheerio');
 var _ = require('underscore');
 var Path = require('path');
+var FS = require('fs');
 var Q = require('q');
 
 describe('Tilepin DataSource provider', function() {
@@ -19,9 +20,11 @@ describe('Tilepin DataSource provider', function() {
     it('should load external files', function(done) {
         provider.loadTileSource({
             source : 'project'
+        }).then(function(result) {
+            return Q.ninvoke(FS, 'readFile', result.path, 'UTF-8');
         }).then(
-                function(result) {
-                    var dom = $(result.xml);
+                function(xml) {
+                    var dom = $(xml);
                     var fileElm = dom
                             .find('layer datasource parameter[name="file"]');
                     expect(fileElm[0]).not.to.be(null);

@@ -63,14 +63,17 @@ _.extend(TileMillSourceProvider.prototype, {
     loadTileSource : function(params) {
         var that = this;
         var baseDir;
-        return that._prepareTileSourceFile(params).then(function(sourceFile) {
+        var sourceFile;
+        return that._prepareTileSourceFile(params).then(function(file) {
+            sourceFile = file;
             baseDir = Path.dirname(sourceFile);
             return Q.ninvoke(FS, 'readFile', sourceFile, 'UTF-8');
         }).then(function(xml) {
             return {
-                xml : xml,
-                base : baseDir
-            }
+//                xml : xml,
+                base : baseDir,
+                path : sourceFile
+            };
         })
     },
 
@@ -100,6 +103,7 @@ _.extend(TileMillSourceProvider.prototype, {
         var hash = shasum.digest('hex');
         return hash;
     },
+
     _downloadAndUnzip : function(url, dir) {
         var that = this;
         var obj = Url.parse(url);
