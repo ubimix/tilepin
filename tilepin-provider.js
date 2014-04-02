@@ -45,13 +45,6 @@ _.extend(TileMillSourceProvider.prototype, {
                 return true;
             return Q.nfcall(FS.unlink, xmlTilepinFile).then(function() {
                 return true;
-            }, function(e) {
-                // Just log errors...
-                var msg = 'Can not remove ' + 'the "';
-                msg += xmlTilepinFile;
-                msg += '" project file';
-                console.log(msg, e);
-                return true;
             });
         })
     },
@@ -67,14 +60,11 @@ _.extend(TileMillSourceProvider.prototype, {
         return that._prepareTileSourceFile(params).then(function(file) {
             sourceFile = file;
             baseDir = Path.dirname(sourceFile);
-            return Q.ninvoke(FS, 'readFile', sourceFile, 'UTF-8');
-        }).then(function(xml) {
             return {
-//                xml : xml,
                 base : baseDir,
                 path : sourceFile
             };
-        })
+        });
     },
 
     _getTileSourceFile : function(sourceKey, fileName) {
@@ -112,22 +102,28 @@ _.extend(TileMillSourceProvider.prototype, {
                 + that._getSha1(url);
         var dataDir = Path.join(dir, path);
         var dataFileName = Path.join(dataDir, Path.basename(obj.pathname));
-        return Q().then(function() {
-            var segments = dataDir.split('/');
-            var p = '';
-            _.each(segments, function(segment) {
-                p = (p == '' && segment == '') ? '/' : Path.join(p, segment);
-                if (!FS.existsSync(p)) {
-                    FS.mkdirSync(p);
+        var promise = Q();
+        if (!FS.existsSync(dataDir)) {
+            promise = promise.then(
+                    function() {
+                        var segments = dataDir.split('/');
+                        var p = '';
+                        _.each(segments, function(segment) {
+                            p = (p == '' && segment == '') ? '/' : Path.join(p,
+                                    segment);
+                            if (!FS.existsSync(p)) {
+                                FS.mkdirSync(p);
+                            }
+                        });
+                    }).then(function() {
+                if (!FS.existsSync(dataFileName)) {
+                    return that._download(dataFileName, url)
                 }
+            }).then(function() {
+                return that._unzip(dataFileName, dataDir);
             });
-        }).then(function() {
-            if (!FS.existsSync(dataFileName)) {
-                return that._download(dataFileName, url)
-            }
-        }).then(function() {
-            return that._unzip(dataFileName, dataDir);
-        }).then(function() {
+        }
+        return promise.then(function() {
             return dataDir;
         });
     },
@@ -293,24 +289,36 @@ _.extend(TileMillSourceProvider.prototype, {
     },
 
     _loadMmlStyle : function(dir, stylesheet) {
+        var promise = Q();
+        var id;
         if (_.isString(stylesheet)) {
+            id = stylesheet;
             var fullPath = Path.join(dir, stylesheet);
-            return Q.nfcall(FS.readFile, fullPath, 'utf8').then(function(css) {
-                return {
-                    id : stylesheet,
-                    data : css
-                }
-            });
-        } else if (stylesheet.cartocss) {
-            var css = stylesheet.cartocss;
-            if (_.isObject(stylesheet.cartocss)) {
-                var converter = new CartoJsonCss.CartoCssSerializer();
-                css = converter.serialize(stylesheet.cartocss);
+            if (Path.extname(fullPath) == '.js') {
+                promise = Q().then(function() {
+                    return require(fullPath);
+                })
+            } else {
+                promise = Q.nfcall(FS.readFile, fullPath, 'utf8');
             }
-            stylesheet.data = css;
+        } else {
+            promise = Q(stylesheet.cartocss);
             delete stylesheet.cartocss;
-            return Q(stylesheet);
+            id = stylesheet.id;
         }
+        return promise.then(function(css) {
+            if (!id) {
+                id = _.uniqueId('cartocss-');
+            }
+            if (_.isObject(css)) {
+                var converter = new CartoJsonCss.CartoCssSerializer();
+                css = converter.serialize(css);
+            }
+            return {
+                id : id,
+                data : css
+            };
+        })
     },
 
     _getTilepinProjectFile : function(sourceKey) {
@@ -329,10 +337,18 @@ _.extend(TileMillSourceProvider.prototype, {
         } else if (FS.existsSync(xmlTilepinFile)) {
             return Q(xmlTilepinFile);
         } else {
-            return that._buildXmlStyleFile(mmlFile, xmlTilepinFile, params)
-                    .then(function() {
-                        return xmlTilepinFile;
-                    });
+            that._loadingStyles = that._loadingStyles || {};
+            var promise = that._loadingStyles[mmlFile];
+            if (!promise) {
+                promise = that._loadingStyles[mmlFile] = that
+                        ._buildXmlStyleFile(mmlFile, xmlTilepinFile, params)
+                        .fin(function() {
+                            delete that._loadingStyles[mmlFile];
+                        });
+            }
+            return promise.then(function() {
+                return xmlTilepinFile;
+            });
         }
     },
 
