@@ -12,7 +12,7 @@ var redisOptions = {};
 var tileCache = new TilepinCache(redisOptions);
 var workdir = process.cwd();
 var options = {
-    useVectorTiles : false,
+    useVectorTiles : true,
     cache : tileCache,
     styleDir : workdir
 };
@@ -41,7 +41,14 @@ promise = promise
 
     mask = '/tiles/invalidate/:source([^]+)'
     app.get(mask, function(req, res) {
+        var formats = req.query['formats'];
+        if (formats) {
+            formats = formats.split(/[,;]/gim)
+        } else {
+            formats = undefined;
+        }
         tileProvider.invalidate({
+            formats : formats,
             source : req.param('source')
         }).then(function(result) {
             sendReply(req, res, 200, 'OK');
@@ -103,7 +110,6 @@ promise = promise
                 minzoom : result.minzoom,
                 id : result.interactivity_layer
             } ]
-            // console.log(result);
             sendReply(req, res, 200, result);
         }).fail(function(err) {
             sendError(req, res, err);
@@ -161,16 +167,22 @@ function sendError(req, res, err) {
 }
 
 function sendReply(req, res, statusCode, content, headers) {
+    var callback = req.query.callback;
     res.status(statusCode);
+    if (callback == '')
+        callback = null;
+    if (callback) {
+        headers['Content-Type'] = 'application/javascript';
+        var str;
+        if (Buffer.isBuffer(content)) {
+            str = content.toString();
+        } else {
+            str = JSON.stringify(content);
+        }
+        content = callback + '(' + str + ');'
+    }
     _.each(headers, function(value, key) {
         res.setHeader(key, value);
     })
-    var callback = req.query.callback;
-    if (callback == '')
-        callback = null;
-    if (callback && !Buffer.isBuffer(content)) {
-        res.send(callback + '(' + JSON.stringify(content) + ');');
-    } else {
-        res.send(content);
-    }
+    res.send(content);
 }

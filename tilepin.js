@@ -193,12 +193,14 @@ _.extend(ProjectBasedTilesProvider.prototype, TilesProvider.prototype, {
     invalidate : function(params) {
         var promises = [];
         promises.push(this.tileSourceProvider.clearTileSource(params));
-        var sourceKey = this._getSourceKey(params);
-        this.sourceCache.del(sourceKey);
-        sourceKey = this._getSourceKey(params, '-tile');
-        this.sourceCache.del(sourceKey);
-        sourceKey = this._getSourceKey(params, '-vector');
-        this.sourceCache.del(sourceKey);
+        _.each([ '', '-tile', '-vector' ], function(prefix) {
+            var sourceKey = this._getSourceKey(params, prefix);
+            var source = this.sourceCache.get(sourceKey);
+            this.sourceCache.del(sourceKey);
+            if (source && _.isFunction(source.close)) {
+                promises.push(Q.ninvoke(source, 'close'));
+            }
+        }, this);
         return Q.all(promises);
     },
     loadTile : function(params) {
@@ -231,8 +233,14 @@ _.extend(ProjectBasedTilesProvider.prototype, TilesProvider.prototype, {
             return Q.ninvoke(tileSource, 'getInfo');
         });
     },
-    getFormats : function() {
-        return Q([ 'grid', 'tile', 'vtile' ]);
+    getFormats : function(params) {
+        var result = [ 'grid', 'tile', 'vtile' ];
+        if (params && _.isArray(params.formats)) {
+            result = _.filter(result, function(format) {
+                return _.contains(params.formats, format);
+            })
+        }
+        return Q(result);
     },
     _getTileSourceCacheTTL : function() {
         return this.options.tileSourceCacheTTL || 60 * 60 * 1000;
@@ -255,36 +263,58 @@ _.extend(ProjectBasedTilesProvider.prototype, TilesProvider.prototype, {
             if (tileSource) {
                 return tileSource;
             }
-            return Q().then(function() {
-                return that.tileSourceProvider.loadTileSource(params);
-            }).then(function(uri) {
-                if (that._isVectorTiles(params)) {
-                    return that._newTileBridge(params, uri);
-                } else {
-                    return that._newTileliveSource(params, uri);
-                }
-            });
+            var index = that._sourceLoadingIndex || {};
+            that._sourceLoadingIndex = index;
+            var promise = index[sourceKey];
+            if (!promise) {
+                promise = index[sourceKey] = Q().then(function() {
+                    return that.tileSourceProvider.loadTileSource(params);
+                }).then(function(uri) {
+                    if (that._isVectorTiles(params)) {
+                        return that._newTileBridge(params, uri);
+                    } else {
+                        return that._newTileliveSource(params, uri);
+                    }
+                }).fin(function() {
+                    delete index[sourceKey];
+                });
+            }
+            return promise
         }).then(function(tileSource) {
             that.sourceCache.set(sourceKey, tileSource);
             return tileSource;
         });
     },
     _newTileliveSource : function(params, uri) {
-        if (this.options.useVectorTiles){
-            return this._newTileliveSource1(params, uri);
-        } else {
-            return this._newTileliveSource0(params, uri);
-        }
+        var that = this;
+        return Q.ninvoke(FS, 'readFile', uri.path, 'UTF-8').then(function(xml) {
+            var url = {
+                pathname : uri.path,
+                base : uri.base,
+                xml : xml
+            }
+            if (that.options.useVectorTiles) {
+                return that._newTileliveSource1(params, url);
+            } else {
+                return that._newTileliveSource0(params, url);
+            }
+        });
     },
 
     _newTileliveSource0 : function(params, uri) {
-        var url = 'mapnik://' + uri.path;
+        var url = _.extend({}, uri, {
+            protocol : 'mapnik:'
+        });
         return Q.ninvoke(Tilelive, 'load', url);
+        // var url = 'mapnik://' + uri.path;
+        // return Q.ninvoke(Tilelive, 'load', url);
     },
 
     _newTileliveSource1 : function(params, uri) {
         var that = this;
         function replaceProjection(str) {
+            if (!str)
+                return str;
             return str.replace(/srs=".*?"/gim, function(match) {
                 return 'srs="+proj=merc ' + '+a=6378137 +b=6378137 '
                         + '+lat_ts=0.0 +lon_0=0.0 '

@@ -222,10 +222,8 @@ _.extend(TileMillSourceProvider.prototype, {
         var xmlDir = Path.dirname(xmlFile);
         function prepareFileSource(dataLayer) {
             var url = dataLayer.Datasource.file;
-            var promise;
-            if (!url.match(/^https?:\/\/.*$/gim)) {
-                promise = Q();
-            } else {
+            var promise = Q();
+            if (url && url.match(/^https?:\/\/.*$/gim)) {
                 promise = that._downloadAndUnzip(url, layersDir).then(
                         function(dataDir) {
                             return that._findDataIndex(dataDir, url);
@@ -237,8 +235,10 @@ _.extend(TileMillSourceProvider.prototype, {
                 });
             }
             return promise.then(function(result) {
-                dataLayer.Datasource.file = Path.resolve(xmlDir,
-                        dataLayer.Datasource.file);
+                if (dataLayer.Datasource.file) {
+                    dataLayer.Datasource.file = Path.resolve(xmlDir,
+                            dataLayer.Datasource.file);
+                }
                 return result;
             });
         }
@@ -296,7 +296,8 @@ _.extend(TileMillSourceProvider.prototype, {
             var fullPath = Path.join(dir, stylesheet);
             if (Path.extname(fullPath) == '.js') {
                 promise = Q().then(function() {
-                    return require(fullPath);
+                    var obj = require(fullPath);
+                    return _.isFunction(obj) ? obj() : obj;
                 })
             } else {
                 promise = Q.nfcall(FS.readFile, fullPath, 'utf8');

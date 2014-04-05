@@ -72,8 +72,11 @@ _.extend(RedisCache.prototype, {
         })
     },
     _isJson : function(headers) {
-        return headers
-                && headers['Content-Type'] == 'text/javascript; charset=utf-8';
+        if (!headers)
+            return false;
+        var str = headers['Content-Type'];
+        return str.indexOf('text/javascript') >= 0
+                || str.indexOf('application/json') >= 0;
     },
     _toTile : function(tile, headers) {
         return {
