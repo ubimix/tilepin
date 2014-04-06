@@ -104,26 +104,25 @@ _.extend(TileMillSourceProvider.prototype, {
         var dataFileName = Path.join(dataDir, Path.basename(obj.pathname));
         var promise = Q();
         if (!FS.existsSync(dataDir)) {
-            promise = promise.then(
-                    function() {
-                        var segments = dataDir.split('/');
-                        var p = '';
-                        _.each(segments, function(segment) {
-                            p = (p == '' && segment == '') ? '/' : Path.join(p,
-                                    segment);
-                            if (!FS.existsSync(p)) {
-                                FS.mkdirSync(p);
-                            }
-                        });
-                    }).then(function() {
-                if (!FS.existsSync(dataFileName)) {
-                    return that._download(dataFileName, url)
-                }
-            }).then(function() {
-                return that._unzip(dataFileName, dataDir);
-            });
+            promise = promise.then(function() {
+                var segments = dataDir.split('/');
+                var p = '';
+                _.each(segments, function(segment) {
+                    p = (p == '' && segment == '') ? '/' : Path
+                            .join(p, segment);
+                    if (!FS.existsSync(p)) {
+                        FS.mkdirSync(p);
+                    }
+                });
+            })
         }
-        return promise.then(function() {
+        promise = promise.then(function() {
+            if (!FS.existsSync(dataFileName)) {
+                return that._download(dataFileName, url)
+            }
+        }).then(function() {
+            return that._unzip(dataFileName, dataDir);
+        }).then(function() {
             return dataDir;
         });
     },
