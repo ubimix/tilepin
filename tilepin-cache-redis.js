@@ -75,8 +75,9 @@ _.extend(RedisCache.prototype, {
         if (!headers)
             return false;
         var str = headers['Content-Type'];
-        return str.indexOf('text/javascript') >= 0
+        var result = str.indexOf('text/javascript') >= 0
                 || str.indexOf('application/json') >= 0;
+        return result;
     },
     _toTile : function(tile, headers) {
         return {
@@ -105,9 +106,11 @@ _.extend(RedisCache.prototype, {
                                     return that._toTile(tileBlob, headers);
                                 }
                                 return that._convertBufferToJson(tileBlob)
-                                        .then(function(tile) {
-                                            return that._toTile(tile, headers);
-                                        });
+                                        .then(
+                                                function(tile) {
+                                                    return that._toTile(tile,
+                                                            headers);
+                                                });
                             })
                 })
     },

@@ -172,7 +172,9 @@ function sendReply(req, res, statusCode, content, headers) {
     if (callback == '')
         callback = null;
     if (callback) {
-        headers['Content-Type'] = 'application/javascript';
+        if (headers){
+            headers['Content-Type'] = 'application/javascript';
+        }
         var str;
         if (Buffer.isBuffer(content)) {
             str = content.toString();
