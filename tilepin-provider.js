@@ -116,7 +116,7 @@ _.extend(TileMillSourceProvider.prototype, {
                 });
             })
         }
-        promise = promise.then(function() {
+        return promise.then(function() {
             if (!FS.existsSync(dataFileName)) {
                 return that._download(dataFileName, url)
             }
