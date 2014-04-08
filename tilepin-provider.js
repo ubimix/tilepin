@@ -9,348 +9,282 @@ var FS = require('fs');
 var Crypto = require('crypto');
 var Http = require('http');
 
-var Q = require('q');
+var Commons = require('./tilepin-commons');
+var P = Commons.P;
+
 var CartoJsonCss = require('./carto-json-css');
 var Carto = require('carto');
 var AdmZip = require('adm-zip');
+var LRU = require('lru-cache');
+
+var Tilelive = require('tilelive');
+var TileliveMapnik = require('tilelive-mapnik');
+var VectorTile = require('tilelive-vector');
+var TileBridge = require('tilelive-bridge');
+var TileMillProjectLoader = require('./tilepin-loader');
+
+// Protocols registration
+TileliveMapnik.registerProtocols(Tilelive);
+VectorTile.registerProtocols(Tilelive);
+// Register a fake protocol allowing to return the control to the renderer
+Tilelive.protocols['tilepin:'] = function(options, callback) {
+    callback(null, options.source);
+};
 
 function TileSourceProvider() {
     if (_.isFunction(this.initialize)) {
         this.initialize.apply(this, arguments);
     }
 }
-_.extend(TileSourceProvider.prototype, {
+TileSourceProvider.TILE_TYPES = [ 'vtiles', 'rendered' ];
+_.extend(TileSourceProvider.prototype, Commons.Events, {
+
+    traceWrap : Commons.traceWrap,
+
     initialize : function(options) {
         this.options = options;
     },
+
+    /* ------------------------------ */
+    // Methods to re-define in sub-classes.
+    /** Loads and returns a promise for a tile source */
     loadTileSource : function(params) {
+        return P();
     },
+    /** Cleans up a tile source corresponding to the specified parameters */
     clearTileSource : function(params) {
-    }
+        return P();
+    },
+
+    /* ------------------------------ */
+    /** Returns all possible types of tile sources supported by this provider */
+    getAllTileSourceTypes : function(params) {
+        return TileSourceProvider.TILE_TYPES;
+    },
+    isVectorSourceType : function(params) {
+        var format = params.format;
+        return format == 'vtile' || format == 'pbf'
+    },
+    /**
+     * Returns a type of sources corresponding to the format parameter in the
+     * given arguments.
+     */
+    getTileSourceType : function(params) {
+        if (this.isVectorSourceType(params)) {
+            return TileSourceProvider.TILE_TYPES[0];
+        } else {
+            return TileSourceProvider.TILE_TYPES[1];
+        }
+    },
 });
 
-TileSourceProvider.TileMillProvider = TileMillSourceProvider;
+TileSourceProvider.CachingTileSourceProvider = CachingTileSourceProvider;
+TileSourceProvider.TileMillSourceProvider = TileMillSourceProvider;
+
+/* -------------------------------------------------------------------------- */
+/**
+ * 
+ */
+function CachingTileSourceProvider() {
+    TileSourceProvider.apply(this, arguments);
+}
+_.extend(CachingTileSourceProvider.prototype, TileSourceProvider.prototype);
+_.extend(CachingTileSourceProvider.prototype, {
+
+    initialize : function(options) {
+        this.options = options || {};
+        this.sourceCache = new LRU({
+            maxAge : this._getTileSourceCacheTTL()
+        });
+    },
+    loadTileSource : function(params) {
+        var that = this;
+        return that.traceWrap('loadTileSource', params, P().then(function() {
+            var sourceType = that.getTileSourceType(params);
+            var sourceKey = that._getSourceCacheKey(params, sourceType);
+            var tileSource = that.sourceCache.get(sourceKey);
+            if (tileSource) {
+                return tileSource;
+            }
+            var index = that._sourceLoadingIndex || {};
+            that._sourceLoadingIndex = index;
+            var promise = index[sourceKey];
+            if (!promise) {
+                promise = index[sourceKey] = P().then(function() {
+                    return that.getTileSourceProvider().loadTileSource(params);
+                }).fin(function() {
+                    delete index[sourceKey];
+                });
+            }
+            return promise.then(function(tileSource) {
+                that.sourceCache.set(sourceKey, tileSource);
+                return tileSource;
+            });
+        }));
+    },
+    clearTileSource : function(params) {
+        var that = this;
+        return that.traceWrap('clearTileSource', params, P().then(
+                function() {
+                    var promises = [];
+                    _.each(this.getAllTileSourceTypes(), function(type) {
+                        promises.push(P().then(
+                                function() {
+                                    var sourceKey = that._getSourceCacheKey(
+                                            params, type);
+                                    var source = that.sourceCache
+                                            .get(sourceKey);
+                                    that.sourceCache.del(sourceKey);
+                                    if (source && _.isFunction(source.close)) {
+                                        return P.ninvoke(source, 'close');
+                                    }
+                                }).then(
+                                function() {
+                                    return that.getTileSourceProvider()
+                                            .clearTileSource(params);
+                                }));
+                    })
+                    return P.all(promises);
+                }));
+    },
+    /** Returns the underlying tilesource provider */
+    getTileSourceProvider : function() {
+        return this.options.tileSourceProvider;
+    },
+    /** Sets a new underlying tilesource provider returning tilesources to cache. */
+    setTileSourceProvider : function(provider) {
+        this.options.tileSourceProvider = provider;
+    },
+    _getTileSourceCacheTTL : function() {
+        return this.options.tileSourceCacheTTL || 60 * 60 * 1000;
+    },
+    /**
+     * An internal method returning a cache key for the source defined in the
+     * parameters.
+     */
+    _getSourceCacheKey : function(params, sourceType) {
+        var key = params.source || '';
+        key += '-' + sourceType;
+        return key;
+    },
+})
+
+/* -------------------------------------------------------------------------- */
+/**
+ * This provider uses TileMill projects to create tile sources.
+ */
 function TileMillSourceProvider() {
     TileSourceProvider.apply(this, arguments);
 }
 _.extend(TileMillSourceProvider.prototype, TileSourceProvider.prototype);
 _.extend(TileMillSourceProvider.prototype, {
-
-    clearTileSource : function(params) {
-        var that = this;
-        return Q().then(function() {
-            var sourceKey = params.source;
-            var xmlTilepinFile = that._getTilepinProjectFile(sourceKey);
-            if (!FS.existsSync(xmlTilepinFile))
-                return true;
-            return Q.nfcall(FS.unlink, xmlTilepinFile).then(function() {
-                return true;
-            });
-        })
+    initialize : function(options) {
+        this.options = options || {};
+        this.projectLoader = new TileMillProjectLoader(options);
     },
-
-    /**
-     * This method loads and returns an object contining tilesource XML and a
-     * base directory for this tilesource.
-     */
     loadTileSource : function(params) {
         var that = this;
-        var baseDir;
-        var sourceFile;
-        return that._prepareTileSourceFile(params).then(function(file) {
-            sourceFile = file;
-            baseDir = Path.dirname(sourceFile);
-            return {
-                base : baseDir,
-                path : sourceFile
-            };
-        });
-    },
-
-    _getTileSourceFile : function(sourceKey, fileName) {
-        var dir = this.options.dir || this.options.styleDir || __dirname;
-        dir = Path.join(dir, sourceKey);
-        dir = Path.resolve(dir);
-        var fullPath = Path.join(dir, fileName);
-        return fullPath;
-    },
-
-    _findDataIndex : function(dir, url) {
-        return Q.nfcall(FS.readdir, dir).then(function(list) {
-            var result = null;
-            _.each(list, function(file) {
-                if (file.lastIndexOf('.shp') > 0) {
-                    result = Path.join(dir, file);
-                }
-            })
-            return result;
-        })
-    },
-
-    _getSha1 : function(str) {
-        var shasum = Crypto.createHash('sha1');
-        shasum.update(str);
-        var hash = shasum.digest('hex');
-        return hash;
-    },
-
-    _downloadAndUnzip : function(url, dir) {
-        var that = this;
-        var obj = Url.parse(url);
-        var ext = Path.extname(obj.pathname);
-        var path = Path.basename(obj.pathname, ext) || '.tmp-'
-                + that._getSha1(url);
-        var dataDir = Path.join(dir, path);
-        var dataFileName = Path.join(dataDir, Path.basename(obj.pathname));
-        var promise = Q();
-        if (!FS.existsSync(dataDir)) {
-            promise = promise.then(function() {
-                var segments = dataDir.split('/');
-                var p = '';
-                _.each(segments, function(segment) {
-                    p = (p == '' && segment == '') ? '/' : Path
-                            .join(p, segment);
-                    if (!FS.existsSync(p)) {
-                        FS.mkdirSync(p);
-                    }
-                });
-            })
-        }
-        return promise.then(function() {
-            if (!FS.existsSync(dataFileName)) {
-                return that._download(dataFileName, url)
-            }
-        }).then(function() {
-            return that._unzip(dataFileName, dataDir);
-        }).then(function() {
-            return dataDir;
-        });
-    },
-
-    _getMaxRedirects : function() {
-        return 10;
-    },
-
-    _download : function(dataFileName, url) {
-        var that = this;
-        function httpGet(options, redirectCount) {
-            var diferred = Q.defer();
-            try {
-                if (redirectCount >= that._getMaxRedirects()) {
-                    throw new Error('Too many redirections. (' + redirectCount
-                            + ').');
-                }
-                Http.get(options, function(res) {
-                    try {
-                        var result = null;
-                        if (res.statusCode > 300 && res.statusCode < 400
-                                && res.headers.location) {
-                            var location = res.headers.location;
-                            var newUrl = Url.parse(location);
-                            if (!newUrl.hostname) {
-                                options.path = location;
-                            }
-                            result = httpGet(newUrl, redirectCount++);
+        return that.traceWrap('loadTileSource', params, P().then(function() {
+            var sourceKey = params.source;
+            var sourceType = that.getTileSourceType(params);
+            return P().then(function() {
+                var index = that._sourceLoadingIndex || {};
+                that._sourceLoadingIndex = index;
+                var promise = index[sourceKey];
+                if (!promise) {
+                    promise = index[sourceKey] = P().then(function() {
+                        if (that.isVectorSourceType(params)) {
+                            return that._newTileBridgeSource(params);
                         } else {
-                            result = res;
+                            return that._newTileliveSource(params);
                         }
-                        diferred.resolve(result);
-                    } catch (e) {
-                        diferred.reject(e);
+                    }).fin(function() {
+                        delete index[sourceKey];
+                    });
+                }
+                return promise
+            });
+        }));
+    },
+    clearTileSource : function(params) {
+        return that.traceWrap('clearTileSource', params, P().then(function() {
+            return this.projectLoader.clearProject(params);
+        }));
+    },
+    _getTopTileSourceProvider : function(params) {
+        return this.options.provider || this;
+    },
+    _setTopTileSourceProvider : function(provider) {
+        this.options.provider = provider;
+    },
+    _getVectorTilesUri : function(params, uri) {
+        if (uri.vectorTilesUrl)
+            return uri.vectorTilesUrl;
+        if (params.vectorTilesUrl)
+            return params.vectorTilesUrl;
+        return undefined;
+    },
+    _replaceVtilesProjection : function(str) {
+        if (!str)
+            return str;
+        return str.replace(/srs=".*?"/gim, function(match) {
+            return 'srs="+proj=merc ' + '+a=6378137 +b=6378137 '
+                    + '+lat_ts=0.0 +lon_0=0.0 ' + '+x_0=0.0 +y_0=0.0 +k=1.0 '
+                    + '+units=m +nadgrids=@null ' + '+wktext +no_defs +over"';
+        });
+    },
+    _getTileSourceConfig : function(params) {
+        return this.projectLoader.loadProject(params);
+    },
+    _newTileliveSource : function(params) {
+        var that = this;
+        return that._getTileSourceConfig(params).then(function(uri) {
+            var vectorTilesUrl = that._getVectorTilesUri(params, uri);
+            if (vectorTilesUrl) {
+                var provider = that._getTopTileSourceProvider(params);
+                return provider.loadTileSource(_.extend({}, params, {
+                    format : 'vtile'
+                })).then(function(vtileSource) {
+                    var tilesUri = _.extend({}, uri, {
+                        protocol : 'vector:',
+                        source : {
+                            protocol : 'tilepin:',
+                            source : vtileSource
+                        }
+                    });
+                    tilesUri.xml = that._replaceVtilesProjection(tilesUri.xml);
+                    return P.ninvoke(Tilelive, 'load', tilesUri);
+                });
+            } else {
+                var url = _.extend({}, uri, {
+                    protocol : 'mapnik:'
+                });
+                return P.ninvoke(Tilelive, 'load', url);
+                // var url = 'mapnik://' + uri.path;
+                // return P.ninvoke(Tilelive, 'load', url);
+            }
+        });
+    },
+
+    _newTileBridgeSource : function(params, uri) {
+        var that = this;
+        return that._getTileSourceConfig(params).then(function(uri) {
+            var deferred = P.defer();
+            try {
+                new TileBridge(uri.path, function(err, bridge) {
+                    if (err) {
+                        deferred.reject(err);
+                    } else {
+                        deferred.resolve(bridge);
                     }
                 });
             } catch (e) {
-                diferred.reject(e);
+                deferred.reject(e);
             }
-            return diferred.promise;
-        }
-        var dataDir = Path.dirname(dataFileName);
-        function f() {
-        }
-        return Q.nfcall(FS.mkdir, dataDir).then(f, f).then(function() {
-            var options = Url.parse(url);
-            return httpGet(options, 0).then(function(res) {
-                var diferred = Q.defer();
-                try {
-                    var file = FS.createWriteStream(dataFileName);
-                    res.pipe(file);
-                    file.on('finish', function() {
-                        file.close();
-                        diferred.resolve(true);
-                    });
-                } catch (e) {
-                    diferred.reject(e);
-                }
-                return diferred.promise;
-            });
+            return deferred.promise;
         });
-    },
-
-    _unzip : function(zipFile, dataDir) {
-        var zip = new AdmZip(zipFile);
-        var zipEntries = zip.getEntries(); // an array of ZipEntry records
-        return Q.all(_.map(zipEntries, function(zipEntry) {
-            var file = Path.join(dataDir, zipEntry.entryName);
-            zip.extractEntryTo(zipEntry.entryName, dataDir, true, true);
-        }));
-    },
-
-    _getDbCredentials : function(params, datasource) {
-        var that = this;
-        return Q().then(function() {
-            var sourceKey = params.source;
-            if (_.isFunction(that.options.db)) {
-                return that.options.db(sourceKey, datasource);
-            } else {
-                var dbOptions = that.options.db || {};
-                return dbOptions[sourceKey];
-            }
-        })
-    },
-
-    /**
-     * @param mmlFile
-     * @param xmlFile
-     * @param params
-     * @returns a promise//
-     */
-    _buildXmlStyleFile : function(mmlFile, xmlFile, params) {
-        var that = this;
-        var dir = Path.dirname(mmlFile);
-        var layersDir = Path.join(dir, 'layers');
-        var xmlDir = Path.dirname(xmlFile);
-        function prepareFileSource(dataLayer) {
-            var url = dataLayer.Datasource.file;
-            var promise = Q();
-            if (url && url.match(/^https?:\/\/.*$/gim)) {
-                promise = that._downloadAndUnzip(url, layersDir).then(
-                        function(dataDir) {
-                            return that._findDataIndex(dataDir, url);
-                        }).then(function(filePath) {
-                    // dataLayer.Datasource.file = Path.relative(xmlDir,
-                    // filePath);
-                    dataLayer.Datasource.file = filePath;
-                    dataLayer.Datasource.type = 'shape';
-                });
-            }
-            return promise.then(function(result) {
-                if (dataLayer.Datasource.file) {
-                    dataLayer.Datasource.file = Path.resolve(xmlDir,
-                            dataLayer.Datasource.file);
-                }
-                return result;
-            });
-        }
-        function prepareDbSource(dataLayer) {
-            return that._getDbCredentials(params, dataLayer.Datasource).then(
-                    function(data) {
-                        _.extend(dataLayer.Datasource, data);
-                    });
-        }
-        function downloadRemoteFiles(styleJSON) {
-            return Q.all(_.map(styleJSON.Layer, function(dataLayer) {
-                if (!dataLayer.Datasource)
-                    return;
-                var url = dataLayer.Datasource.file;
-                if (url) {
-                    return prepareFileSource(dataLayer);
-                } else if (dataLayer.Datasource.type == 'postgis') {
-                    return prepareDbSource(dataLayer);
-                }
-            }))
-        }
-        function loadMmlStyles(styleJSON) {
-            return Q.all(_.map(styleJSON.Stylesheet, function(stylesheet) {
-                return that._loadMmlStyle(dir, stylesheet);
-            })).then(function(styles) {
-                styleJSON.Stylesheet = styles;
-                return styleJSON;
-            });
-        }
-        return Q().then(function() {
-            return Q.nfcall(FS.readFile, mmlFile, 'utf8');
-        }).then(function(str) {
-            // var options = this.options || {};
-            // str = _.template(str, options)
-            return JSON.parse(str);
-        }).then(function(json) {
-            return Q.all([ downloadRemoteFiles(json), loadMmlStyles(json) ])//
-            .then(function() {
-                var renderer = new Carto.Renderer({
-                    filename : xmlFile,
-                    local_data_dir : xmlDir,
-                });
-                return Q.ninvoke(renderer, 'render', json);
-            });
-        }).then(function(xml) {
-            return Q.nfcall(FS.writeFile, xmlFile, xml);
-        });
-    },
-
-    _loadMmlStyle : function(dir, stylesheet) {
-        var promise = Q();
-        var id;
-        if (_.isString(stylesheet)) {
-            id = stylesheet;
-            var fullPath = Path.join(dir, stylesheet);
-            if (Path.extname(fullPath) == '.js') {
-                promise = Q().then(function() {
-                    var obj = require(fullPath);
-                    return _.isFunction(obj) ? obj() : obj;
-                })
-            } else {
-                promise = Q.nfcall(FS.readFile, fullPath, 'utf8');
-            }
-        } else {
-            promise = Q(stylesheet.cartocss);
-            delete stylesheet.cartocss;
-            id = stylesheet.id;
-        }
-        return promise.then(function(css) {
-            if (!id) {
-                id = _.uniqueId('cartocss-');
-            }
-            if (_.isObject(css)) {
-                var converter = new CartoJsonCss.CartoCssSerializer();
-                css = converter.serialize(css);
-            }
-            return {
-                id : id,
-                data : css
-            };
-        })
-    },
-
-    _getTilepinProjectFile : function(sourceKey) {
-        return this._getTileSourceFile(sourceKey, 'project.tilepin.xml');
-    },
-
-    _prepareTileSourceFile : function(params) {
-        var that = this;
-        var sourceKey = params.source;
-        var mmlFile = that._getTileSourceFile(sourceKey, 'project.mml');
-        var xmlFile = that._getTileSourceFile(sourceKey, 'project.xml');
-        var xmlTilepinFile = that._getTilepinProjectFile(sourceKey);
-        var promise;
-        if (FS.existsSync(xmlFile)) {
-            return Q(xmlFile);
-        } else if (FS.existsSync(xmlTilepinFile)) {
-            return Q(xmlTilepinFile);
-        } else {
-            that._loadingStyles = that._loadingStyles || {};
-            var promise = that._loadingStyles[mmlFile];
-            if (!promise) {
-                promise = that._loadingStyles[mmlFile] = that
-                        ._buildXmlStyleFile(mmlFile, xmlTilepinFile, params)
-                        .fin(function() {
-                            delete that._loadingStyles[mmlFile];
-                        });
-            }
-            return promise.then(function() {
-                return xmlTilepinFile;
-            });
-        }
-    },
-
+    }
+// var sourceType = this.getTileSourceType(params);
 })
+
 module.exports = TileSourceProvider;

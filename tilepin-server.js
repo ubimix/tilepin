@@ -57,7 +57,7 @@ promise = promise
         }).done();
     });
 
-    mask = '/tiles/:source([^]+)/:z/:x/:y.:format(png|grid.json|vtile)';
+    mask = '/tiles/:source([^]+)/:z/:x/:y.:format(png|svg|grid.json|vtile)';
     app.get(mask, function(req, res) {
         var format = req.params.format;
         if (format == 'grid.json') {
