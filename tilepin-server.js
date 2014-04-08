@@ -1,5 +1,5 @@
 var express = require('express');
-var Q = require('q');
+var P = require('./tilepin-commons').P;
 var _ = require('underscore');
 var app = express();
 var Url = require('url');
@@ -25,7 +25,7 @@ options.provider = function(params, force) {
 };
 var tileProvider = new Tilepin.CachingTilesProvider(options);
 
-var promise = Q();
+var promise = P();
 promise = promise
 //
 .then(function initApplication(tileSource) {
@@ -57,12 +57,9 @@ promise = promise
         }).done();
     });
 
-    mask = '/tiles/:source([^]+)/:z/:x/:y.:format(png|svg|grid.json|vtile)';
+    mask = '/tiles/:source([^]+)/:z/:x/:y.:format(png|grid.json|vtile)';
     app.get(mask, function(req, res) {
         var format = req.params.format;
-        if (format == 'grid.json') {
-            format = 'grid';
-        }
         var conf = {
             source : req.params.source,
             format : format,
@@ -137,7 +134,7 @@ promise = promise
 
 process.on('SIGTERM', function() {
     console.log("Closing...");
-    Q().then(function() {
+    P().then(function() {
         app.close();
     }).then(function() {
         return tileProvider.close();
@@ -172,7 +169,7 @@ function sendReply(req, res, statusCode, content, headers) {
     if (callback == '')
         callback = null;
     if (callback) {
-        if (headers){
+        if (headers) {
             headers['Content-Type'] = 'application/javascript';
         }
         var str;
