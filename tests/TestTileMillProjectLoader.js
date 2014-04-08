@@ -1,17 +1,16 @@
 var expect = require('expect.js');
 var $ = require('cheerio');
 var _ = require('underscore');
-var Q = require('q');
 var FS = require('fs');
 var Path = require('path');
 var TileMillProjectLoader = require('../tilepin-loader');
 
-describe('TileMillProjectLoader', function() {
+var params = {
+    source : 'project'
+};
+var projectFile = Path.join(__dirname, 'project/project.tilepin.xml');
 
-    var params = {
-        source : 'project'
-    };
-    var projectFile = Path.join(__dirname, 'project/project.tilepin.xml');
+describe('TileMillProjectLoader', function() {
     var loader;
     var counters = {};
     beforeEach(function() {

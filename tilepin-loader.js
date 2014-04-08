@@ -27,14 +27,13 @@ function TileMillProjectLoader(options) {
     if (!this.options.dir) {
         this.options.dir = './';
     }
+    Commons.addEventTracing(this, [ 'clearProject', 'loadProject' ]);
 }
 _.extend(TileMillProjectLoader.prototype, Commons.Events, {
 
-    traceWrap : Commons.traceWrap,
-
     clearProject : function(params) {
         var that = this;
-        return that.traceWrap('clearProject', params, P().then(function() {
+        return P().then(function() {
             var sourceKey = params.source;
             var xmlTilepinFile = that._getTilepinProjectFile(sourceKey);
             if (!FS.existsSync(xmlTilepinFile))
@@ -42,7 +41,7 @@ _.extend(TileMillProjectLoader.prototype, Commons.Events, {
             return P.nfcall(FS.unlink, xmlTilepinFile).then(function() {
                 return true;
             });
-        }));
+        });
     },
 
     /**
@@ -54,7 +53,7 @@ _.extend(TileMillProjectLoader.prototype, Commons.Events, {
         var baseDir;
         var sourceFile;
         var that = this;
-        return that.traceWrap('loadProject', params, P().then(function() {
+        return P().then(function() {
             return that._prepareTileSourceFile(params);
         }).then(function(file) {
             sourceFile = file;
@@ -71,7 +70,7 @@ _.extend(TileMillProjectLoader.prototype, Commons.Events, {
                                 uri.xml = xml;
                                 return uri;
                             })
-                }));
+                })
     },
 
     _getTileSourceFile : function(sourceKey, fileName) {

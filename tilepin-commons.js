@@ -109,25 +109,36 @@ module.exports = {
         return triggerMethod;
     })(),
 
-    traceWrap : function(name, params, promise) {
-        var that = this;
-        return P().then(function() {
-            that.fire(name + ':begin', {
-                params : params
-            })
-            return promise.then(function(result) {
-                that.fire(name + ':end', {
-                    params : params,
-                    result : result
-                });
-                return result;
-            }, function(err) {
-                that.fire(name + ':end', {
-                    params : params,
-                    error : err
-                });
-                throw err;
-            });
+    addEventTracing : function(obj, methods) {
+        _.each(methods, function(method) {
+            var m = obj[method];
+            if (!_.isFunction(m))
+                return;
+            var that = obj;
+            obj[method] = function(params) {
+                var args = _.toArray(arguments);
+                return P().then(function() {
+                    that.fire(method + ':begin', {
+                        params : params
+                    })
+                    return P().then(function() {
+                        return m.apply(that, args);
+                    }).then(function(result) {
+                        that.fire(method + ':end', {
+                            params : params,
+                            result : result
+                        });
+                        return result;
+                    }, function(err) {
+                        that.fire(method + ':end', {
+                            params : params,
+                            error : err
+                        });
+                        throw err;
+                    });
+                })
+            }
         })
-    },
+    }
+
 };

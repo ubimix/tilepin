@@ -39,10 +39,9 @@ function TileSourceProvider() {
 TileSourceProvider.TILE_TYPES = [ 'vtiles', 'rendered' ];
 _.extend(TileSourceProvider.prototype, Commons.Events, {
 
-    traceWrap : Commons.traceWrap,
-
     initialize : function(options) {
         this.options = options;
+        Commons.addEventTracing(this, [ 'loadTileSource', 'clearTileSource' ]);
     },
 
     /* ------------------------------ */
@@ -88,6 +87,15 @@ TileSourceProvider.TileMillSourceProvider = TileMillSourceProvider;
 function CachingTileSourceProvider() {
     TileSourceProvider.apply(this, arguments);
 }
+CachingTileSourceProvider.wrap = function(provider) {
+    var result = new TileSourceProvider.CachingTileSourceProvider({
+        tileSourceProvider : provider
+    });
+    if (_.isFunction(provider.setTopTileSourceProvider)) {
+        provider.setTopTileSourceProvider(result);
+    }
+    return result;
+}
 _.extend(CachingTileSourceProvider.prototype, TileSourceProvider.prototype);
 _.extend(CachingTileSourceProvider.prototype, {
 
@@ -96,16 +104,24 @@ _.extend(CachingTileSourceProvider.prototype, {
         this.sourceCache = new LRU({
             maxAge : this._getTileSourceCacheTTL()
         });
+        Commons.addEventTracing(this, [ 'loadTileSource', 'clearTileSource' ]);
     },
     loadTileSource : function(params) {
         var that = this;
-        return that.traceWrap('loadTileSource', params, P().then(function() {
+        return P().then(function() {
             var sourceType = that.getTileSourceType(params);
             var sourceKey = that._getSourceCacheKey(params, sourceType);
             var tileSource = that.sourceCache.get(sourceKey);
             if (tileSource) {
+                that.fire('loadFromCache', {
+                    params : params,
+                    tileSource : tileSource
+                });
                 return tileSource;
             }
+            that.fire('missedInCache', {
+                params : params
+            });
             var index = that._sourceLoadingIndex || {};
             that._sourceLoadingIndex = index;
             var promise = index[sourceKey];
@@ -117,23 +133,31 @@ _.extend(CachingTileSourceProvider.prototype, {
                 });
             }
             return promise.then(function(tileSource) {
+                that.fire('setInCache', {
+                    params : params,
+                    tileSource : tileSource
+                });
                 that.sourceCache.set(sourceKey, tileSource);
                 return tileSource;
             });
-        }));
+        });
     },
     clearTileSource : function(params) {
         var that = this;
-        return that.traceWrap('clearTileSource', params, P().then(
+        return P().then(
                 function() {
                     var promises = [];
-                    _.each(this.getAllTileSourceTypes(), function(type) {
+                    _.each(that.getAllTileSourceTypes(), function(type) {
                         promises.push(P().then(
                                 function() {
                                     var sourceKey = that._getSourceCacheKey(
                                             params, type);
                                     var source = that.sourceCache
                                             .get(sourceKey);
+                                    that.fire('clearCache', {
+                                        params : params,
+                                        result : source
+                                    });
                                     that.sourceCache.del(sourceKey);
                                     if (source && _.isFunction(source.close)) {
                                         return P.ninvoke(source, 'close');
@@ -145,7 +169,7 @@ _.extend(CachingTileSourceProvider.prototype, {
                                 }));
                     })
                     return P.all(promises);
-                }));
+                });
     },
     /** Returns the underlying tilesource provider */
     getTileSourceProvider : function() {
@@ -181,10 +205,11 @@ _.extend(TileMillSourceProvider.prototype, {
     initialize : function(options) {
         this.options = options || {};
         this.projectLoader = new TileMillProjectLoader(options);
+        Commons.addEventTracing(this, [ 'loadTileSource', 'clearTileSource' ]);
     },
     loadTileSource : function(params) {
         var that = this;
-        return that.traceWrap('loadTileSource', params, P().then(function() {
+        return P().then(function() {
             var sourceKey = params.source;
             var sourceType = that.getTileSourceType(params);
             return P().then(function() {
@@ -204,17 +229,18 @@ _.extend(TileMillSourceProvider.prototype, {
                 }
                 return promise
             });
-        }));
+        });
     },
     clearTileSource : function(params) {
-        return that.traceWrap('clearTileSource', params, P().then(function() {
-            return this.projectLoader.clearProject(params);
-        }));
+        var that = this;
+        return P().then(function() {
+            return that.projectLoader.clearProject(params);
+        });
     },
     _getTopTileSourceProvider : function(params) {
         return this.options.provider || this;
     },
-    _setTopTileSourceProvider : function(provider) {
+    setTopTileSourceProvider : function(provider) {
         this.options.provider = provider;
     },
     _getVectorTilesUri : function(params, uri) {
