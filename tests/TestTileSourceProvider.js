@@ -8,6 +8,8 @@ var TileSourceProvider = require('../tilepin-provider');
 
 describe('TileSourceProvider', function() {
 
+    var projectFile = Path.join(__dirname, 'project/project.tilepin.xml');
+
     describe('TileSourceProvider.TileMillSourceProvider', function() {
 
         var projectFile = Path.join(__dirname, 'project/project.tilepin.xml');
@@ -157,13 +159,17 @@ describe('TileSourceProvider', function() {
             // Clean up the cache. It should tore-load the source.
             .then(
                     function() {
+                        expect(FS.existsSync(projectFile)).to.be(true);
                         return provider.clearTileSource(params) //
                         .then(function() {
                             traces = '';
+                            expect(FS.existsSync(projectFile)).to.be(false);
                             return provider.loadTileSource(params);
                         }) //
                         .then(
                                 function(tileSource) {
+                                    expect(FS.existsSync(projectFile)).to
+                                            .be(true);
                                     expect(tileSource).not.to.be(null);
                                     expect(traces).to.eql('<loadTileSource>'
                                             + '<missedInCache/>'
