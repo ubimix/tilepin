@@ -18,6 +18,10 @@ function MapExport(options) {
     this.options = options || {};
     this.projectLoader = this.options.projectLoader
             || new TileMillProjectLoader(this.options);
+    this.fileDir = this.options.tmpDir || './tmp';
+    if (!FS.existsSync(this.fileDir)) {
+        FS.mkdirSync(this.fileDir);
+    }
 }
 _.extend(MapExport.prototype, {
 
@@ -26,7 +30,7 @@ _.extend(MapExport.prototype, {
         return P().then(function() {
             var format = params.format || 'pdf';
             var zoom = params.zoom;
-            var fileDir = params.fileDir;
+            var fileDir = that.fileDir;
             var fileName = fileName;
             var scale = 1.0;
             var w = Math.min(params.west, params.east);

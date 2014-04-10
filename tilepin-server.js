@@ -24,7 +24,8 @@ var options = {
     useVectorTiles : true,
     cache : tileCache,
     styleDir : workDir,
-    projectLoader : projectLoader
+    projectLoader : projectLoader,
+    tmpDir : tmpFileDir
 };
 var mapExport = new MapExport(options);
 var dir = __dirname;
@@ -144,8 +145,7 @@ promise = promise
             south : req.params.south,
             east : req.params.east,
             north : req.params.north,
-            file : file,
-            fileDir : tmpFileDir
+            file : file
         };
         return mapExport.generateMap(params).then(function(result) {
             sendReply(req, res, 200, result.file, result.headers);
