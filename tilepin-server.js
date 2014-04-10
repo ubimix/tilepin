@@ -3,27 +3,30 @@ var P = require('./tilepin-commons').P;
 var _ = require('underscore');
 var app = express();
 var Url = require('url');
+var Path = require('path');
 var Tilepin = require('./tilepin');
 var TilepinCache = require('./tilepin-cache-redis');
 var TileMillProjectLoader = require('./tilepin-loader');
+var MapExport = require('./tilepin-export');
+
 // var TilepinCache = require('./tilepin-cache-mbtiles');
 
 var port = 8888;
 var redisOptions = {};
 var tileCache = new TilepinCache(redisOptions);
-var workdir = process.cwd();
+var workDir = process.cwd();
+var tmpFileDir = Path.join(workDir, 'tmp');
 
 var projectLoader = new TileMillProjectLoader({
-    dir : workdir
+    dir : workDir
 });
 var options = {
     useVectorTiles : true,
     cache : tileCache,
-    styleDir : workdir,
+    styleDir : workDir,
     projectLoader : projectLoader
 };
-// options = {};
-
+var mapExport = new MapExport(options);
 var dir = __dirname;
 var baseProvider = new Tilepin.ProjectBasedTilesProvider(options);
 options.provider = function(params, force) {
@@ -40,7 +43,7 @@ promise = promise
             res.setHeader('Access-Control-Allow-Origin', '*');
             return next();
         });
-        app.use(express.static(workdir + '/'));
+        app.use(express.static(workDir + '/'));
     });
 
     var mask;
@@ -125,59 +128,27 @@ promise = promise
         // })
     })
 
-    mask = '/export/:source([^]+)/:file.:format(svg|pdf|png)';
+    mask = '/export/:source([^]+)/:zoom/' //
+            + ':west,:south,:east,:north' //
+            + '/:file.:format(svg|pdf|png)';
     app.get(mask, function(req, res) {
+        var source = req.params.source;
         var format = req.params.format;
-        var conf = {
-            source : req.params.source,
+        var zoom = req.params.zoom;
+        var file = req.params.file + '.' + format;
+        var params = {
+            source : source,
             format : format,
-            z : req.params.z,
-            x : +req.params.x,
-            y : +req.params.y,
+            zoom : zoom,
+            west : req.params.west,
+            south : req.params.south,
+            east : req.params.east,
+            north : req.params.north,
+            file : file,
+            fileDir : tmpFileDir
         };
-        var mercator = new (require('sphericalmercator'));
-
-        var zoom = 16;
-        var first = [ 2.3445940017700195, 48.85892699104534 ];
-        var second = [ 2.364506721496582, 48.853759781483475 ];
-        var firstPoint = mercator.px(first, zoom);
-        var secondPoint = mercator.px(second, zoom)
-        var size = {
-            width : Math.abs(firstPoint[0] - secondPoint[0]),
-            height : Math.abs(firstPoint[1] - secondPoint[1])
-        }
-        var w = Math.min(first[0], second[0]);
-        var s = Math.min(first[1], second[1]);
-        var e = Math.max(first[0], second[0]);
-        var n = Math.max(first[1], second[1]);
-        var bbox = mercator.convert([ w, s, e, n ], '900913');
-        return projectLoader.loadProject(conf).then(function(uri) {
-            var mime = 'application/' + format;
-            var options = _.extend({}, uri, size);
-            var mapnik = require('mapnik');
-            var map = new mapnik.Map(options.width, options.height);
-            return P.ninvoke(map, 'fromString', options.xml, options)//
-            .then(function(map) {
-                map.extent = bbox;
-                var path = './map[' + bbox.join(',') + '].' + format;
-                return P.ninvoke(map, 'renderFile', path, {
-                    format : format,
-                    scale : 1.0
-                }).then(function() {
-                    var FS = require('fs');
-                    return P.ninvoke(FS, 'readFile', path) //
-                    .then(function(buffer) {
-                        return {
-                            tile : buffer,
-                            headers : {
-                                'Content-Type' : mime
-                            }
-                        }
-                    })
-                });
-            })
-        }).then(function(result) {
-            sendReply(req, res, 200, result.tile, result.headers);
+        return mapExport.generateMap(params).then(function(result) {
+            sendReply(req, res, 200, result.file, result.headers);
         }).fail(function(err) {
             sendError(req, res, err);
         }).done();
