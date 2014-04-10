@@ -25,6 +25,7 @@
         "tilelive-bridge" : "*",
         "sphericalmercator": "~1.0.2",
         "carto" : "~0.9.4",
+        "mapnik": ">=0.7.25 && <1.5.0",
         "q" : "*",
         "lru-cache" : "*",
         "redis" : "*",

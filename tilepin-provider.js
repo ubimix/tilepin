@@ -204,7 +204,8 @@ _.extend(TileMillSourceProvider.prototype, TileSourceProvider.prototype);
 _.extend(TileMillSourceProvider.prototype, {
     initialize : function(options) {
         this.options = options || {};
-        this.projectLoader = new TileMillProjectLoader(options);
+        this.projectLoader = this.options.projectLoader
+                || new TileMillProjectLoader(this.options);
         Commons.addEventTracing(this, [ 'loadTileSource', 'clearTileSource' ]);
     },
     loadTileSource : function(params) {

@@ -1,6 +1,6 @@
 var Path = require('path')
 var FS = require('fs');
-var Q = require('q');
+var P = require('./tilepin-commons').P;
 var _ = require('underscore');
 var LRU = require('lru-cache');
 var Redis = require('redis');
@@ -32,14 +32,14 @@ function RedisCache(options) {
 }
 _.extend(RedisCache.prototype, {
     open : function() {
-        return Q();
+        return P();
     },
     close : function() {
         client.quit();
-        return Q();
+        return P();
     },
     _invokeClient : function(method, args) {
-        var deferred = Q.defer();
+        var deferred = P.defer();
         try {
             args.push(deferred.makeNodeResolver());
             method = this.client[method];
@@ -52,20 +52,20 @@ _.extend(RedisCache.prototype, {
     _invoke : function(method, sourceKey, tileArgs, headersArgs) {
         tileArgs = [ sourceKey ].concat(tileArgs);
         headersArgs = [ 'h:' + sourceKey ].concat(headersArgs);
-        return Q.all([ this._invokeClient(method, tileArgs),
+        return P.all([ this._invokeClient(method, tileArgs),
                 this._invokeClient(method, headersArgs) ]);
     },
     _convertJsonToBuffer : function(obj) {
         if (!obj)
-            return Q();
-        return Q.nfcall(Zlib.gzip, JSON.stringify(obj)).then(function(result) {
+            return P();
+        return P.nfcall(Zlib.gzip, JSON.stringify(obj)).then(function(result) {
             return result;
         })
     },
     _convertBufferToJson : function(buf) {
         if (!buf)
-            return Q();
-        return Q.nfcall(Zlib.gunzip, buf).then(function(buf) {
+            return P();
+        return P.nfcall(Zlib.gunzip, buf).then(function(buf) {
             var str = buf.toString('utf8');
             var result = JSON.parse(str);
             return result;
@@ -106,11 +106,9 @@ _.extend(RedisCache.prototype, {
                                     return that._toTile(tileBlob, headers);
                                 }
                                 return that._convertBufferToJson(tileBlob)
-                                        .then(
-                                                function(tile) {
-                                                    return that._toTile(tile,
-                                                            headers);
-                                                });
+                                        .then(function(tile) {
+                                            return that._toTile(tile, headers);
+                                        });
                             })
                 })
     },
@@ -120,7 +118,7 @@ _.extend(RedisCache.prototype, {
                 function(headersBlob) {
                     var promise;
                     if (!that._isJson(tile.headers)) {
-                        promise = Q(tile.tile);
+                        promise = P(tile.tile);
                     } else {
                         promise = that._convertJsonToBuffer(tile.tile);
                     }

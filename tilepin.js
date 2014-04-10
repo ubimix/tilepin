@@ -140,13 +140,13 @@ _.extend(CachingTilesProvider.prototype, TilesProvider.prototype, {
         }
         return key;
     }
-
 })
 
 function ProjectBasedTilesProvider(options) {
     this.options = options || {};
+    var provider = new TileSourceProvider.TileMillSourceProvider(this.options);
     this.tileSourceProvider = TileSourceProvider.CachingTileSourceProvider
-            .wrap(new TileSourceProvider.TileMillSourceProvider(this.options));
+            .wrap(provider);
     Commons.addEventTracing(this, [ 'invalidate', 'loadTile', 'loadInfo' ]);
 }
 _.extend(ProjectBasedTilesProvider.prototype, TilesProvider.prototype, {
@@ -154,6 +154,7 @@ _.extend(ProjectBasedTilesProvider.prototype, TilesProvider.prototype, {
     invalidate : function(params) {
         return this.tileSourceProvider.clearTileSource(params);
     },
+
     loadTile : function(params) {
         var that = this;
         return that.tileSourceProvider.loadTileSource(params)
