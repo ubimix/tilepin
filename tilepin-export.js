@@ -42,10 +42,11 @@ _.extend(MapExport.prototype, {
                 height : Math.abs(firstPoint[1] - secondPoint[1])
             }
 
-            console.log('SIZE: ', size);
-
-            var outputFileName = 'map-' + zoom // 
+            var source = params.source || '';
+            source = source.replace(/[\\\/\-&]/gim, '_');
+            var outputFileName = 'map-' + source + '-' + zoom // 
                     + '-[' + bbox.join(',') + '].' + format;
+
             var outputFile = Path.join(fileDir, outputFileName);
             var mime = 'application/' + format;
             var filePromiseIndex = that._filePromiseIndex || {};
