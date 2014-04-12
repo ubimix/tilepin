@@ -52,7 +52,6 @@ _.extend(MapExport.prototype, {
                     + '-[' + bbox.join(',') + '].' + format;
 
             var outputFile = Path.join(fileDir, outputFileName);
-            var mime = 'application/' + format;
             var filePromiseIndex = that._filePromiseIndex || {};
             that._filePromiseIndex = filePromiseIndex;
             var promise = filePromiseIndex[outputFile];
@@ -79,6 +78,18 @@ _.extend(MapExport.prototype, {
                 });
             }
             return promise.then(function() {
+                var mime;
+                switch (format) {
+                case 'png':
+                    mime = 'image/png';
+                    break;
+                case 'pdf':
+                    mime = 'application/pdf';
+                    break;
+                case 'svg':
+                    mime = 'image/svg+xml';
+                    break;
+                }
                 return P.ninvoke(FS, 'readFile', outputFile) //
                 .then(function(buffer) {
                     return {
