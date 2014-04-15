@@ -58,7 +58,8 @@ _.extend(RedisCache.prototype, {
     _convertJsonToBuffer : function(obj) {
         if (!obj)
             return P();
-        return P.nfcall(Zlib.gzip, JSON.stringify(obj)).then(function(result) {
+        var str = JSON.stringify(obj);
+        return P.nfcall(Zlib.gzip, str).then(function(result) {
             return result;
         })
     },
@@ -74,9 +75,9 @@ _.extend(RedisCache.prototype, {
     _isJson : function(headers) {
         if (!headers)
             return false;
-        var str = headers['Content-Type'];
-        var result = str.indexOf('text/javascript') >= 0
-                || str.indexOf('application/json') >= 0;
+        var str = headers['Content-Type'] || '';
+        var result = str.indexOf('javascript') >= 0 //
+                || str.indexOf('json') >= 0;
         return result;
     },
     _toTile : function(tile, headers) {
