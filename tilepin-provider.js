@@ -18,14 +18,12 @@ var AdmZip = require('adm-zip');
 var LRU = require('lru-cache');
 
 var Tilelive = require('tilelive');
-var TileliveMapnik = require('tilelive-mapnik');
-var VectorTile = require('tilelive-vector');
+(require('tilelive-mapnik')).registerProtocols(Tilelive);
+(require('tilelive-vector')).registerProtocols(Tilelive);
+
 var TileBridge = require('tilelive-bridge');
 var TileMillProjectLoader = require('./tilepin-loader');
 
-// Protocols registration
-TileliveMapnik.registerProtocols(Tilelive);
-VectorTile.registerProtocols(Tilelive);
 // Register a fake protocol allowing to return the control to the renderer
 Tilelive.protocols['tilepin:'] = function(options, callback) {
     callback(null, options.source);
@@ -38,6 +36,8 @@ function TileSourceProvider() {
 }
 TileSourceProvider.TILE_TYPES = [ 'vtiles', 'rendered' ];
 _.extend(TileSourceProvider.prototype, Commons.Events, {
+
+    type : 'TileSourceProvider',
 
     initialize : function(options) {
         this.options = options;
@@ -91,13 +91,15 @@ CachingTileSourceProvider.wrap = function(provider) {
     var result = new TileSourceProvider.CachingTileSourceProvider({
         tileSourceProvider : provider
     });
-    if (_.isFunction(provider.setTopTileSourceProvider)) {
-        provider.setTopTileSourceProvider(result);
+    if (_.isFunction(provider.setTileSourceProvider)) {
+        provider.setTileSourceProvider(result);
     }
     return result;
 }
 _.extend(CachingTileSourceProvider.prototype, TileSourceProvider.prototype);
 _.extend(CachingTileSourceProvider.prototype, {
+
+    type : 'CachingTileSourceProvider',
 
     initialize : function(options) {
         this.options = options || {};
@@ -202,6 +204,9 @@ function TileMillSourceProvider() {
 }
 _.extend(TileMillSourceProvider.prototype, TileSourceProvider.prototype);
 _.extend(TileMillSourceProvider.prototype, {
+
+    type : 'TileMillSourceProvider',
+
     initialize : function(options) {
         this.options = options || {};
         this.projectLoader = this.options.projectLoader
@@ -212,20 +217,22 @@ _.extend(TileMillSourceProvider.prototype, {
         var that = this;
         return P().then(function() {
             var sourceKey = params.source;
-            var sourceType = that.getTileSourceType(params);
             return P().then(function() {
+                var promiseKey = sourceKey + '-' + params.format;
                 var index = that._sourceLoadingIndex || {};
                 that._sourceLoadingIndex = index;
-                var promise = index[sourceKey];
+                var promise = index[promiseKey];
                 if (!promise) {
-                    promise = index[sourceKey] = P().then(function() {
+                    promise = index[promiseKey] = P().then(function() {
                         if (that.isVectorSourceType(params)) {
+                            // Load a vector tile
                             return that._newTileBridgeSource(params);
                         } else {
+                            // Load rendered tiles
                             return that._newTileliveSource(params);
                         }
                     }).fin(function() {
-                        delete index[sourceKey];
+                        delete index[promiseKey];
                     });
                 }
                 return promise
@@ -238,11 +245,11 @@ _.extend(TileMillSourceProvider.prototype, {
             return that.projectLoader.clearProject(params);
         });
     },
-    _getTopTileSourceProvider : function(params) {
-        return this.options.provider || this;
+    getTileSourceProvider : function() {
+        return this.options.tileSourceProvider;
     },
-    setTopTileSourceProvider : function(provider) {
-        this.options.provider = provider;
+    setTileSourceProvider : function(provider) {
+        this.options.tileSourceProvider = provider;
     },
     _getVectorTilesUri : function(params, uri) {
         if (uri.vectorTilesUrl)
@@ -254,6 +261,7 @@ _.extend(TileMillSourceProvider.prototype, {
     _replaceVtilesProjection : function(str) {
         if (!str)
             return str;
+        // Replace all SRS references by the Google SRS (900913)
         return str.replace(/srs=".*?"/gim, function(match) {
             return 'srs="+proj=merc ' + '+a=6378137 +b=6378137 '
                     + '+lat_ts=0.0 +lon_0=0.0 ' + '+x_0=0.0 +y_0=0.0 +k=1.0 '
@@ -266,12 +274,22 @@ _.extend(TileMillSourceProvider.prototype, {
     _newTileliveSource : function(params) {
         var that = this;
         return that._getTileSourceConfig(params).then(function(uri) {
-            var vectorTilesUrl = that._getVectorTilesUri(params, uri);
-            if (vectorTilesUrl) {
-                var provider = that._getTopTileSourceProvider(params);
+            // var vectorTilesUrl = that._getVectorTilesUri(params, uri);
+            var useVectorTiles = true;
+            if (useVectorTiles) {
+                var provider = that.getTileSourceProvider(params);
                 return provider.loadTileSource(_.extend({}, params, {
                     format : 'vtile'
                 })).then(function(vtileSource) {
+                    var m = vtileSource.getTile;
+                    vtileSource.getTile = function(z, x, y, callback) {
+                        return m.call(this, z, x, y, function() {
+                            var len = arguments[0] ? arguments[0].length : 0;
+                            console.log('RESULTS: ', //
+                            '[' + len + ']', arguments)
+                            callback.apply(this, arguments);
+                        });
+                    }
                     var tilesUri = _.extend({}, uri, {
                         protocol : 'vector:',
                         source : {

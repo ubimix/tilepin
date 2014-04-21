@@ -7,16 +7,7 @@ var Crypto = require('crypto');
 var Commons = require('./tilepin-commons');
 var P = Commons.P;
 
-var Tilelive = require('tilelive');
-var TileliveMapnik = require('tilelive-mapnik');
-var VectorTile = require('tilelive-vector');
-var TileBridge = require('tilelive-bridge');
-
 var LRU = require('lru-cache');
-var mercator = new (require('sphericalmercator'));
-var CartoJsonCss = require('./carto-json-css');
-var Carto = require('carto');
-var AdmZip = require('adm-zip');
 var TileSourceProvider = require('./tilepin-provider');
 
 function TilesProvider(options) {
