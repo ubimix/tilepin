@@ -40,6 +40,11 @@ _.extend(TileMillProjectLoader.prototype, Commons.Events, {
                 return true;
             return P.nfcall(FS.unlink, xmlTilepinFile).then(function() {
                 return true;
+            }, function(err) {
+                // File does not exist anymore.
+                if (err.code == 'ENOENT')
+                    return true;
+                throw err;
             });
         });
     },
@@ -253,16 +258,23 @@ _.extend(TileMillProjectLoader.prototype, Commons.Events, {
                         _.extend(dataLayer.Datasource, data);
                     });
         }
-        function downloadRemoteFiles(styleJSON) {
+        function processDataSources(styleJSON) {
             return P.all(_.map(styleJSON.Layer, function(dataLayer) {
                 if (!dataLayer.Datasource)
                     return;
+                var result;
                 var url = dataLayer.Datasource.file;
-                if (url) {
-                    return prepareFileSource(dataLayer);
-                } else if (dataLayer.Datasource.type == 'postgis') {
-                    return prepareDbSource(dataLayer);
+                switch (dataLayer.Datasource.type) {
+                case 'postgis':
+                    result = prepareDbSource(dataLayer);
+                    break;
+                default:
+                    if (url) {
+                        result = prepareFileSource(dataLayer);
+                    }
+                    break;
                 }
+                return result;
             }))
         }
         function loadMmlStyles(styleJSON) {
@@ -280,7 +292,7 @@ _.extend(TileMillProjectLoader.prototype, Commons.Events, {
             // str = _.template(str, options)
             return JSON.parse(str);
         }).then(function(json) {
-            return P.all([ downloadRemoteFiles(json), loadMmlStyles(json) ])//
+            return P.all([ processDataSources(json), loadMmlStyles(json) ])//
             .then(function() {
                 var renderer = new Carto.Renderer({
                     filename : xmlFile,
