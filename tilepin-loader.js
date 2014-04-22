@@ -8,6 +8,7 @@ var Url = require('url');
 var FS = require('fs');
 var Crypto = require('crypto');
 var Http = require('http');
+var Yaml = require('js-yaml');
 
 var CartoJsonCss = require('./carto-json-css');
 var Carto = require('carto');
@@ -78,10 +79,14 @@ _.extend(TileMillProjectLoader.prototype, Commons.Events, {
                 })
     },
 
-    _getTileSourceFile : function(sourceKey, fileName) {
+    _getTileSourceDir : function(sourceKey) {
         var dir = this.options.dir || this.options.styleDir || __dirname;
         dir = Path.join(dir, sourceKey);
         dir = Path.resolve(dir);
+        return dir;
+    },
+    _getTileSourceFile : function(sourceKey, fileName) {
+        var dir = this._getTileSourceDir(sourceKey);
         var fullPath = Path.join(dir, fileName);
         return fullPath;
     },
@@ -219,21 +224,77 @@ _.extend(TileMillProjectLoader.prototype, Commons.Events, {
         })
     },
 
+    _readProjectFile : (function() {
+        var TYPES = [ {
+            name : 'project.yml',
+            parse : function(str) {
+                var obj = Yaml.load(str);
+                if (!obj.format) {
+                    obj.format = 'pbf';
+                }
+                return obj;
+            }
+        }, {
+            name : 'project.mml',
+            parse : function(str) {
+                return JSON.parse(str);
+            },
+        } ];
+        return function(dir, params) {
+            return P().then(function() {
+                var fileInfo = null;
+                var file = null;
+                _.find(TYPES, function(info) {
+                    var path = Path.join(dir, info.name);
+                    if (FS.existsSync(path)) {
+                        fileInfo = info;
+                        file = path;
+                    }
+                    return !!fileInfo;
+                })
+                if (!fileInfo) {
+                    var msg = 'Project file not found (';
+                    msg += _.map(TYPES, function(info) {
+                        return info.name;
+                    }).join(' / ');
+                    msg += '). Dir: "' + dir + '".';
+                    throw new Error(msg);
+                }
+                return P.nfcall(FS.readFile, file, 'utf8').then(function(data) {
+                    var obj = fileInfo.parse(data);
+                    return obj;
+                });
+            });
+        }
+    })(),
+
     /**
-     * @param mmlFile
+     * @param projectDir
      * @param xmlFile
      * @param params
      * @returns a promise//
      */
-    _buildXmlStyleFile : function(mmlFile, xmlFile, params) {
+    _buildXmlStyleFile : function(projectDir, xmlFile, params) {
         var that = this;
-        var dir = Path.dirname(mmlFile);
-        var layersDir = Path.join(dir, 'layers');
         var xmlDir = Path.dirname(xmlFile);
+        return that._readProjectFile(projectDir, params).then(function(json) {
+            console.log('CONFIGURATION: ', JSON.stringify(json, null, 2))
+            return P.all([ processDataSources(json), loadMmlStyles(json) ])//
+            .then(function() {
+                var renderer = new Carto.Renderer({
+                    filename : xmlFile,
+                    local_data_dir : xmlDir,
+                });
+                return P.ninvoke(renderer, 'render', json);
+            });
+        }).then(function(xml) {
+            return P.nfcall(FS.writeFile, xmlFile, xml);
+        });
         function prepareFileSource(dataLayer) {
             var url = dataLayer.Datasource.file;
             var promise = P();
             if (url && url.match(/^https?:\/\/.*$/gim)) {
+                var layersDir = Path.join(projectDir, 'layers');
                 promise = that._downloadAndUnzip(url, layersDir).then(
                         function(dataDir) {
                             return that._findDataIndex(dataDir, url);
@@ -279,30 +340,12 @@ _.extend(TileMillProjectLoader.prototype, Commons.Events, {
         }
         function loadMmlStyles(styleJSON) {
             return P.all(_.map(styleJSON.Stylesheet, function(stylesheet) {
-                return that._loadMmlStyle(dir, stylesheet);
+                return that._loadMmlStyle(projectDir, stylesheet);
             })).then(function(styles) {
                 styleJSON.Stylesheet = styles;
                 return styleJSON;
             });
         }
-        return P().then(function() {
-            return P.nfcall(FS.readFile, mmlFile, 'utf8');
-        }).then(function(str) {
-            // var options = this.options || {};
-            // str = _.template(str, options)
-            return JSON.parse(str);
-        }).then(function(json) {
-            return P.all([ processDataSources(json), loadMmlStyles(json) ])//
-            .then(function() {
-                var renderer = new Carto.Renderer({
-                    filename : xmlFile,
-                    local_data_dir : xmlDir,
-                });
-                return P.ninvoke(renderer, 'render', json);
-            });
-        }).then(function(xml) {
-            return P.nfcall(FS.writeFile, xmlFile, xml);
-        });
     },
 
     _loadMmlStyle : function(dir, stylesheet) {
@@ -346,7 +389,6 @@ _.extend(TileMillProjectLoader.prototype, Commons.Events, {
     _prepareTileSourceFile : function(params) {
         var that = this;
         var sourceKey = params.source;
-        var mmlFile = that._getTileSourceFile(sourceKey, 'project.mml');
         var xmlFile = that._getTileSourceFile(sourceKey, 'project.xml');
         var xmlTilepinFile = that._getTilepinProjectFile(sourceKey);
         var promise;
@@ -356,12 +398,13 @@ _.extend(TileMillProjectLoader.prototype, Commons.Events, {
             return P(xmlTilepinFile);
         } else {
             that._loadingStyles = that._loadingStyles || {};
-            var promise = that._loadingStyles[mmlFile];
+            var promise = that._loadingStyles[xmlTilepinFile];
             if (!promise) {
-                promise = that._loadingStyles[mmlFile] = that
-                        ._buildXmlStyleFile(mmlFile, xmlTilepinFile, params)
+                var projectDir = that._getTileSourceDir(sourceKey);
+                promise = that._loadingStyles[xmlTilepinFile] = that
+                        ._buildXmlStyleFile(projectDir, xmlTilepinFile, params)
                         .fin(function() {
-                            delete that._loadingStyles[mmlFile];
+                            delete that._loadingStyles[xmlTilepinFile];
                         });
             }
             return promise.then(function() {
