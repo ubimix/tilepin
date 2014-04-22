@@ -278,8 +278,7 @@ _.extend(TileMillProjectLoader.prototype, Commons.Events, {
         var that = this;
         var xmlDir = Path.dirname(xmlFile);
         return that._readProjectFile(projectDir, params).then(function(json) {
-            console.log('CONFIGURATION: ', JSON.stringify(json, null, 2))
-            return P.all([ processDataSources(json), loadMmlStyles(json) ])//
+            return P.all([ processDataSources(json), loadProjectStyles(json) ])//
             .then(function() {
                 var renderer = new Carto.Renderer({
                     filename : xmlFile,
@@ -338,9 +337,9 @@ _.extend(TileMillProjectLoader.prototype, Commons.Events, {
                 return result;
             }))
         }
-        function loadMmlStyles(styleJSON) {
+        function loadProjectStyles(styleJSON) {
             return P.all(_.map(styleJSON.Stylesheet, function(stylesheet) {
-                return that._loadMmlStyle(projectDir, stylesheet);
+                return that._loadProjectStyle(projectDir, stylesheet);
             })).then(function(styles) {
                 styleJSON.Stylesheet = styles;
                 return styleJSON;
@@ -348,7 +347,7 @@ _.extend(TileMillProjectLoader.prototype, Commons.Events, {
         }
     },
 
-    _loadMmlStyle : function(dir, stylesheet) {
+    _loadProjectStyle : function(dir, stylesheet) {
         var promise = P();
         var id;
         if (_.isString(stylesheet)) {
@@ -356,6 +355,10 @@ _.extend(TileMillProjectLoader.prototype, Commons.Events, {
             var fullPath = Path.join(dir, stylesheet);
             if (Path.extname(fullPath) == '.js') {
                 promise = P().then(function() {
+                    // Cleanup the cache
+                    var name = require.resolve(fullPath);
+                    delete require.cache[name];
+                    // Load the module again
                     var obj = require(fullPath);
                     return _.isFunction(obj) ? obj() : obj;
                 })
