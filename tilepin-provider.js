@@ -87,15 +87,6 @@ TileSourceProvider.TileMillSourceProvider = TileMillSourceProvider;
 function CachingTileSourceProvider() {
     TileSourceProvider.apply(this, arguments);
 }
-CachingTileSourceProvider.wrap = function(provider) {
-    var result = new TileSourceProvider.CachingTileSourceProvider({
-        tileSourceProvider : provider
-    });
-    if (_.isFunction(provider.setTileSourceProvider)) {
-        provider.setTileSourceProvider(result);
-    }
-    return result;
-}
 _.extend(CachingTileSourceProvider.prototype, TileSourceProvider.prototype);
 _.extend(CachingTileSourceProvider.prototype, {
 
@@ -274,22 +265,13 @@ _.extend(TileMillSourceProvider.prototype, {
     _newTileliveSource : function(params) {
         var that = this;
         return that._getTileSourceConfig(params).then(function(uri) {
-            // var vectorTilesUrl = that._getVectorTilesUri(params, uri);
+            var vectorTilesUrl = that._getVectorTilesUri(params, uri);
             var useVectorTiles = true;
             if (useVectorTiles) {
                 var provider = that.getTileSourceProvider(params);
                 return provider.loadTileSource(_.extend({}, params, {
                     format : 'vtile'
                 })).then(function(vtileSource) {
-                    var m = vtileSource.getTile;
-                    vtileSource.getTile = function(z, x, y, callback) {
-                        return m.call(this, z, x, y, function() {
-                            var len = arguments[0] ? arguments[0].length : 0;
-                            console.log('RESULTS: ', //
-                            '[' + len + ']', arguments)
-                            callback.apply(this, arguments);
-                        });
-                    }
                     var tilesUri = _.extend({}, uri, {
                         protocol : 'vector:',
                         source : {

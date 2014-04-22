@@ -34,6 +34,7 @@ options.provider = function(params, force) {
     return baseProvider;
 };
 var tileProvider = new Tilepin.CachingTilesProvider(options);
+baseProvider.setTopTilesProvider(tileProvider);
 
 var promise = P();
 promise = promise
