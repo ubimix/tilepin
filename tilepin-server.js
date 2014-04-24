@@ -40,13 +40,11 @@ var promise = P();
 promise = promise
 //
 .then(function initApplication(tileSource) {
-    app.configure(function() {
-        app.use(function(req, res, next) {
-            res.setHeader('Access-Control-Allow-Origin', '*');
-            return next();
-        });
-        app.use(express.static(workDir + '/'));
+    app.use(function(req, res, next) {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        return next();
     });
+    app.use(express.static(workDir + '/'));
 
     var mask;
 
@@ -154,6 +152,8 @@ promise = promise
             sendError(req, res, err);
         }).done();
     });
+
+    console.log('????')
 
     app.listen(port);
     console.log('Listening on port: ' + port);
