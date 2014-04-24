@@ -21,7 +21,7 @@ var projectLoader = new TileMillProjectLoader({
     dir : workDir
 });
 var options = {
-    useVectorTiles : true,
+    useVectorTiles : false,
     cache : tileCache,
     styleDir : workDir,
     projectLoader : projectLoader,
@@ -71,13 +71,13 @@ promise = promise
     mask = '/tiles/:source([^]+)/:z/:x/:y.:format(png|grid.json|vtile)';
     app.get(mask, function(req, res) {
         var format = req.params.format;
-        var conf = {
+        var conf = _.extend({}, req.query, {
             source : req.params.source,
             format : format,
             z : req.params.z,
             x : +req.params.x,
             y : +req.params.y,
-        };
+        });
         tileProvider.loadTile(conf).then(function(result) {
             sendReply(req, res, 200, result.tile, result.headers);
         }).fail(function(err) {

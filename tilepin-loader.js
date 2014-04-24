@@ -262,6 +262,11 @@ _.extend(TileMillProjectLoader.prototype, Commons.Events, {
                 }
                 return P.nfcall(FS.readFile, file, 'utf8').then(function(data) {
                     var obj = fileInfo.parse(data);
+                    if (params.dumpConfigAsYaml) {
+                        console.log(Yaml.dump(obj));
+                    } else if (params.dumpConfigAsJSON) {
+                        console.log(JSON.stringify(obj, null, 2));
+                    }
                     return obj;
                 });
             });

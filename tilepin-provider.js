@@ -242,12 +242,8 @@ _.extend(TileMillSourceProvider.prototype, {
     setTileSourceProvider : function(provider) {
         this.options.tileSourceProvider = provider;
     },
-    _getVectorTilesUri : function(params, uri) {
-        if (uri.vectorTilesUrl)
-            return uri.vectorTilesUrl;
-        if (params.vectorTilesUrl)
-            return params.vectorTilesUrl;
-        return undefined;
+    _useVectorTiles : function(params, uri) {
+        return !!this.options.useVectorTiles;
     },
     _replaceVtilesProjection : function(str) {
         if (!str)
@@ -265,8 +261,7 @@ _.extend(TileMillSourceProvider.prototype, {
     _newTileliveSource : function(params) {
         var that = this;
         return that._getTileSourceConfig(params).then(function(uri) {
-            var vectorTilesUrl = that._getVectorTilesUri(params, uri);
-            var useVectorTiles = true;
+            var useVectorTiles = that._useVectorTiles(params, uri);
             if (useVectorTiles) {
                 var provider = that.getTileSourceProvider(params);
                 return provider.loadTileSource(_.extend({}, params, {
