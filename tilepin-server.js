@@ -54,6 +54,7 @@ promise = promise
         if (formats) {
             formats = formats.split(/[,;]/gim)
         } else {
+            625
             formats = undefined;
         }
         tileProvider.invalidate({
@@ -152,8 +153,6 @@ promise = promise
             sendError(req, res, err);
         }).done();
     });
-
-    console.log('????')
 
     app.listen(port);
     console.log('Listening on port: ' + port);
