@@ -283,7 +283,8 @@ _.extend(TileMillProjectLoader.prototype, Commons.Events, {
         var that = this;
         var xmlDir = Path.dirname(xmlFile);
         return that._readProjectFile(projectDir, params).then(function(json) {
-            return P.all([ processDataSources(json), loadProjectStyles(json) ])//
+            return P.all([ processDataSources(json), loadProjectStyles(json) ])
+            //
             .then(function() {
                 var renderer = new Carto.Renderer({
                     filename : xmlFile,
@@ -318,22 +319,38 @@ _.extend(TileMillProjectLoader.prototype, Commons.Events, {
             });
         }
         function prepareDbSource(dataLayer) {
-            return that._getDbCredentials(params, dataLayer.Datasource).then(
-                    function(data) {
-                        _.extend(dataLayer.Datasource, data);
-                    });
+            return P() //
+            .then(
+                    function() {
+                        var file = dataLayer.Datasource.file;
+                        var table = dataLayer.Datasource.table;
+                        if (file && !table) {
+                            file = Path.join(projectDir, file);
+                            return P.ninvoke(FS, 'readFile', file, 'UTF-8')
+                                    .then(function(content) {
+                                        delete dataLayer.Datasource.file;
+                                        dataLayer.Datasource.table = '(' // 
+                                                + content + ') as data';
+                                    });
+                        }
+                    }) // 
+            .then(function() {
+                return that._getDbCredentials(params, dataLayer.Datasource)
+            }).then(function(data) {
+                _.extend(dataLayer.Datasource, data);
+            });
         }
         function processDataSources(styleJSON) {
             return P.all(_.map(styleJSON.Layer, function(dataLayer) {
                 if (!dataLayer.Datasource)
                     return;
                 var result;
-                var url = dataLayer.Datasource.file;
                 switch (dataLayer.Datasource.type) {
                 case 'postgis':
                     result = prepareDbSource(dataLayer);
                     break;
                 default:
+                    var url = dataLayer.Datasource.file;
                     if (url) {
                         result = prepareFileSource(dataLayer);
                     }

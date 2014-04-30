@@ -1,5 +1,6 @@
 var express = require('express');
 var P = require('./tilepin-commons').P;
+var EventManager = require('./tilepin-commons').EventManager;
 var _ = require('underscore');
 var app = express();
 var Url = require('url');
@@ -8,8 +9,6 @@ var Tilepin = require('./tilepin');
 var TilepinCache = require('./tilepin-cache-redis');
 var TileMillProjectLoader = require('./tilepin-loader');
 var MapExport = require('./tilepin-export');
-
-// var TilepinCache = require('./tilepin-cache-mbtiles');
 
 var port = 8888;
 var redisOptions = {};
@@ -20,8 +19,10 @@ var tmpFileDir = Path.join(workDir, 'tmp');
 var projectLoader = new TileMillProjectLoader({
     dir : workDir
 });
+var eventManager = new EventManager();
 var options = {
-    useVectorTiles : false,
+    useVectorTiles : true,
+    eventManager : eventManager,
     cache : tileCache,
     styleDir : workDir,
     projectLoader : projectLoader,
@@ -33,6 +34,18 @@ var baseProvider = new Tilepin.ProjectBasedTilesProvider(options);
 options.provider = function(params, force) {
     return baseProvider;
 };
+function trace(options) {
+    console.log(options.eventName, options.arguments);
+}
+eventManager.on('getTile:begin', trace);
+eventManager.on('getTile:end', trace);
+// eventManager.on('loadTileSource:begin', trace);
+// eventManager.on('loadTileSource:end', trace);
+// eventManager.on('loadTileSource:loadFromCache', trace);
+// eventManager.on('loadTileSource:missedInCache', trace);
+// eventManager.on('loadTileSource:setInCache', trace);
+// eventManager.on('clearTileSource:clearCache', trace);
+
 var tileProvider = new Tilepin.CachingTilesProvider(options);
 baseProvider.setTopTilesProvider(tileProvider);
 
@@ -54,7 +67,6 @@ promise = promise
         if (formats) {
             formats = formats.split(/[,;]/gim)
         } else {
-            625
             formats = undefined;
         }
         tileProvider.invalidate({

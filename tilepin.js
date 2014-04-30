@@ -39,6 +39,10 @@ _.extend(TilesProvider.prototype, Commons.Events, {
             provider = provider.call(this, params, force);
         }
         return P(provider);
+    },
+    _getEventManager : function() {
+        var eventManager = this.options.eventManager || this;
+        return eventManager;
     }
 })
 
@@ -116,6 +120,7 @@ function CachingTilesProvider(options) {
     this.options = options;
     this.cache = options.cache || new MemCache();
     this.provider = options.provider;
+    var eventManager = this._getEventManager();
     Commons.addEventTracing(this, [ 'invalidate', 'loadTile', 'loadInfo' ]);
 }
 _.extend(CachingTilesProvider.prototype, TilesProvider.prototype, {
@@ -203,14 +208,15 @@ function ProjectBasedTilesProvider(options) {
     // this.wrapper.setTilesProvider(provider) methods calls.
     this.options.tilesProvider = this;
     this.setTopTilesProvider(this);
-    this.tileMillProvider = new TileSourceProvider.TileMillSourceProvider(
+    this.tmSourceProvider = new TileSourceProvider.TileMillSourceProvider(
             this.options);
     this.tileSourceProvider = new TileSourceProvider.CachingTileSourceProvider(
-            {
-                tileSourceProvider : this.tileMillProvider
-            });
-
-    Commons.addEventTracing(this, [ 'invalidate', 'loadTile', 'loadInfo' ]);
+            _.extend({}, options, {
+                tileSourceProvider : this.tmSourceProvider
+            }));
+    var eventManager = this._getEventManager();
+    Commons.addEventTracing(this, [ 'invalidate', 'loadTile', 'loadInfo' ],
+            eventManager);
 }
 _.extend(ProjectBasedTilesProvider.prototype, TilesProvider.prototype, {
 

@@ -1,53 +1,62 @@
 var _ = require('underscore');
 var P = require('q');
 
+var Events = {
+
+    /** Registers listeners for the specified event key. */
+    on : function(eventKey, handler, context) {
+        var listeners = this.__listeners = this.__listeners || {};
+        context = context || this;
+        var list = listeners[eventKey] = listeners[eventKey] || [];
+        list.push({
+            handler : handler,
+            context : context
+        });
+    },
+    /** Removes a listener for events with the specified event key */
+    off : function(eventKey, handler, context) {
+        var listeners = this.__listeners;
+        if (!listeners)
+            return;
+        var list = listeners[eventKey];
+        if (!list)
+            return;
+        list = _.filter(list, function(slot) {
+            var match = (slot.handler === handler);
+            match &= (!context || slot.context === context);
+            return !match;
+        })
+        listeners[eventKey] = list.length ? list : undefined;
+    },
+    /** Fires an event with the specified key. */
+    fire : function(eventKey) {
+        var listeners = this.__listeners;
+        if (!listeners)
+            return;
+        var list = listeners[eventKey];
+        if (!list)
+            return;
+        var args = _.toArray(arguments);
+        args.splice(0, 1);
+        _.each(list, function(slot) {
+            slot.handler.apply(slot.context, args);
+        })
+    },
+}
+
+function EventManager() {
+}
+_.extend(EventManager.prototype, Events);
+
 module.exports = {
 
     P : P,
 
     /** Events mixins */
-    Events : {
+    Events : Events,
 
-        /** Registers listeners for the specified event key. */
-        on : function(eventKey, handler, context) {
-            var listeners = this.__listeners = this.__listeners || {};
-            context = context || this;
-            var list = listeners[eventKey] = listeners[eventKey] || [];
-            list.push({
-                handler : handler,
-                context : context
-            });
-        },
-        /** Removes a listener for events with the specified event key */
-        off : function(eventKey, handler, context) {
-            var listeners = this.__listeners;
-            if (!listeners)
-                return;
-            var list = listeners[eventKey];
-            if (!list)
-                return;
-            list = _.filter(list, function(slot) {
-                var match = (slot.handler === handler);
-                match &= (!context || slot.context === context);
-                return !match;
-            })
-            listeners[eventKey] = list.length ? list : undefined;
-        },
-        /** Fires an event with the specified key. */
-        fire : function(eventKey) {
-            var listeners = this.__listeners;
-            if (!listeners)
-                return;
-            var list = listeners[eventKey];
-            if (!list)
-                return;
-            var args = _.toArray(arguments);
-            args.splice(0, 1);
-            _.each(list, function(slot) {
-                slot.handler.apply(slot.context, args);
-            })
-        },
-    },
+    /** Event manager */
+    EventManager : EventManager,
 
     /** Listens to events produced by external objects */
     listenTo : function(obj, event, handler, context) {
@@ -109,36 +118,127 @@ module.exports = {
         return triggerMethod;
     })(),
 
-    addEventTracing : function(obj, methods) {
-        _.each(methods, function(method) {
-            var m = obj[method];
+    addEventTracing : function(obj, methods, that) {
+        that = that || obj;
+        function wrap(methodName, eventName, p) {
+            var m = obj[methodName];
             if (!_.isFunction(m))
-                return;
-            var that = obj;
-            obj[method] = function(params) {
+                return m;
+            var begin = {
+                obj : obj,
+                method : methodName,
+                eventName : eventName + ':begin'
+            };
+            var end = {
+                obj : obj,
+                method : methodName,
+                eventName : eventName + ':end'
+            }
+            obj[methodName] = function(params) {
                 var args = _.toArray(arguments);
                 return P().then(function() {
-                    that.fire(method + ':begin', {
-                        params : params
-                    })
-                    return P().then(function() {
-                        return m.apply(that, args);
-                    }).then(function(result) {
-                        that.fire(method + ':end', {
-                            params : params,
-                            result : result
-                        });
-                        return result;
-                    }, function(err) {
-                        that.fire(method + ':end', {
-                            params : params,
-                            error : err
-                        });
-                        throw err;
-                    });
-                })
+                    that.fire(begin.eventName, _.extend({
+                        arguments : args
+                    }, begin));
+                }).then(function() {
+                    return m.apply(obj, args);
+                }).then(function(result) {
+                    that.fire(end.eventName, _.extend({
+                        arguments : args,
+                        result : result
+                    }, end));
+                    return result;
+                }, function(err) {
+                    that.fire(end.eventName, _.extend({
+                        arguments : args,
+                        error : err
+                    }, end));
+                    throw err;
+                });
             }
+        }
+        _.each(methods, function(method) {
+            var eventName;
+            var methodName;
+            var params;
+            if (_.isString(method)) {
+                methodName = method;
+                eventName = method;
+                params = {};
+            } else {
+                methodName = method.method;
+                eventName = method.event;
+                params = method.params || {};
+            }
+            wrap(methodName, eventName, params);
         })
+    },
+
+    addEventTracingWithCallbacks : function(obj, methods, that) {
+        that = that || obj;
+        function wrap(methodName, eventName) {
+            var m = obj[methodName];
+            if (!m || m._wrapped) {
+                return;
+            }
+            var begin = {
+                obj : obj,
+                eventName : eventName + ':begin',
+                method : methodName
+            }
+            var end = {
+                obj : obj,
+                eventName : eventName + ':end',
+                method : methodName
+            }
+            var wrapper = function() {
+                var self = this;
+                var args = _.toArray(arguments);
+                var callback = args.pop();
+                var deferred = P.defer();
+                try {
+                    that.fire(begin.eventName, _.extend({
+                        arguments : args
+                    }, begin));
+                    args.push(function() {
+                        console.log(' * ', eventName)
+                        deferred.resolve(_.toArray(arguments));
+                    });
+                    m.apply(obj, args);
+                } catch (err) {
+                    deferred.reject(err);
+                }
+                return deferred.promise.then(function(result) {
+                    that.fire(end.eventName, _.extend({
+                        arguments : args,
+                        results : result
+                    }, end));
+                    return callback.apply(self, result);
+                }, function(err) {
+                    that.fire(end.eventName, _.extend({
+                        arguments : args,
+                        error : err
+                    }, end));
+                    return callback.apply(self, result);
+                });
+            }
+            obj[methodName] = wrapper;
+            wrapper._wrapped = true;
+            console.log(methodName, eventName)
+        }
+        _.each(methods, function(method) {
+            var eventName;
+            var methodName;
+            if (_.isString(method)) {
+                methodName = method;
+                eventName = method;
+            } else {
+                methodName = method.method;
+                eventName = method.event;
+            }
+            wrap(methodName, eventName);
+        })
+        return obj;
     }
 
 };
