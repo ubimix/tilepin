@@ -21,7 +21,7 @@ var projectLoader = new TileMillProjectLoader({
 });
 var eventManager = new EventManager();
 var options = {
-    useVectorTiles : true,
+    useVectorTiles : false,
     eventManager : eventManager,
     cache : tileCache,
     styleDir : workDir,
