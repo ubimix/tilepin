@@ -30,23 +30,53 @@ function TileMillProjectLoader(options) {
     }
     Commons.addEventTracing(this, [ 'clearProject', 'loadProject' ]);
 }
+
+function deleteFile(file) {
+    if (!FS.existsSync(file))
+        return P(true);
+    return P.nfcall(FS.unlink, file).then(function() {
+        return true;
+    }, function(err) {
+        // File does not exist anymore.
+        if (err.code == 'ENOENT')
+            return true;
+        throw err;
+    });
+}
+
+function readString(file) {
+    return P.ninvoke(FS, 'readFile', file, 'UTF-8');
+}
+function writeString(file, str) {
+    return P.ninvoke(FS, 'writeFile', file, str, 'UTF-8');
+}
+function readJson(file) {
+    return readString(file).then(function(str) {
+        try {
+            return JSON.parse(str);
+        } catch (e) {
+            return {};
+        }
+    });
+}
+function writeJson(file, json) {
+    json = json || {};
+    var str = JSON.stringify(json);
+    return writeString(file, str);
+}
+
 _.extend(TileMillProjectLoader.prototype, Commons.Events, {
 
     clearProject : function(params) {
         var that = this;
         return P().then(function() {
             var sourceKey = params.source;
-            var xmlTilepinFile = that._getTilepinProjectFile(sourceKey);
-            if (!FS.existsSync(xmlTilepinFile))
-                return true;
-            return P.nfcall(FS.unlink, xmlTilepinFile).then(function() {
-                return true;
-            }, function(err) {
-                // File does not exist anymore.
-                if (err.code == 'ENOENT')
-                    return true;
-                throw err;
-            });
+            var files = [];
+            files.push(that._getTilepinProjectFile(sourceKey));
+            files.push(that._getTilepinPropertiesFile(sourceKey));
+            return P.all(_.map(files, function(file) {
+                return deleteFile(file);
+            }));
         });
     },
 
@@ -56,27 +86,45 @@ _.extend(TileMillProjectLoader.prototype, Commons.Events, {
      */
     loadProject : function(params) {
         var that = this;
-        var baseDir;
-        var sourceFile;
+        if (that._isRemoteProject(params)) {
+            return that._loadRemoteProject(params);
+        } else {
+            return that._loadLocalProject(params);
+        }
+    },
+
+    _isRemoteProject : function(params) {
+        var source = params.source || '';
+        return source.indexOf(':') > 0;
+    },
+
+    _loadRemoteProject : function(params) {
+        var source = params.source || '';
+        return P().then(function() {
+            var result = Url.parse(source);
+            return result;
+        });
+    },
+
+    _loadLocalProject : function(params) {
+        var files;
         var that = this;
         return P().then(function() {
-            return that._prepareTileSourceFile(params);
-        }).then(function(file) {
-            sourceFile = file;
-            baseDir = Path.dirname(sourceFile);
+            return that._prepareProjectFiles(params);
+        }).then(function(f) {
+            files = f;
+            return P.all([ readString(files[0]), readJson(files[1]) ]);
+        }).then(function(array) {
+            var xml = array[0];
+            var properties = array[1];
             return {
-                base : baseDir,
-                pathname : sourceFile,
-                path : sourceFile
+                base : Path.dirname(files[0]),
+                pathname : files[0],
+                path : files[0],
+                properties : properties,
+                xml : xml
             };
-        }).then(
-                function(uri) {
-                    return P.ninvoke(FS, 'readFile', uri.pathname, 'UTF-8')
-                            .then(function(xml) {
-                                uri.xml = xml;
-                                return uri;
-                            })
-                })
+        })
     },
 
     _getTileSourceDir : function(sourceKey) {
@@ -260,7 +308,7 @@ _.extend(TileMillProjectLoader.prototype, Commons.Events, {
                     msg += '). Dir: "' + dir + '".';
                     throw new Error(msg);
                 }
-                return P.nfcall(FS.readFile, file, 'utf8').then(function(data) {
+                return readString(file).then(function(data) {
                     var obj = fileInfo.parse(data);
                     if (params.dumpConfigAsYaml) {
                         console.log(Yaml.dump(obj));
@@ -279,22 +327,35 @@ _.extend(TileMillProjectLoader.prototype, Commons.Events, {
      * @param params
      * @returns a promise//
      */
-    _buildXmlStyleFile : function(projectDir, xmlFile, params) {
+    _buildProjectFiles : function(projectDir, xmlFile, propertiesTilepinFile,
+            params) {
         var that = this;
         var xmlDir = Path.dirname(xmlFile);
         return that._readProjectFile(projectDir, params).then(function(json) {
             return P.all([ processDataSources(json), loadProjectStyles(json) ])
             //
             .then(function() {
-                var renderer = new Carto.Renderer({
-                    filename : xmlFile,
-                    local_data_dir : xmlDir,
-                });
-                return P.ninvoke(renderer, 'render', json);
+                var promises = [];
+                promises.push(writeMapnikXmlFile(json));
+                promises.push(writePropertiesFile(json.properties));
+                return P.all(promises);
             });
-        }).then(function(xml) {
-            return P.nfcall(FS.writeFile, xmlFile, xml);
         });
+
+        function writeMapnikXmlFile(json) {
+            var renderer = new Carto.Renderer({
+                filename : xmlFile,
+                local_data_dir : xmlDir,
+            });
+            return P.ninvoke(renderer, 'render', json) //
+            .then(function(xml) {
+                return writeString(xmlFile, xml);
+            });
+        }
+        function writePropertiesFile(json) {
+            return writeJson(propertiesTilepinFile, json);
+        }
+
         function prepareFileSource(dataLayer) {
             var url = dataLayer.Datasource.file;
             var promise = P();
@@ -320,20 +381,18 @@ _.extend(TileMillProjectLoader.prototype, Commons.Events, {
         }
         function prepareDbSource(dataLayer) {
             return P() //
-            .then(
-                    function() {
-                        var file = dataLayer.Datasource.file;
-                        var table = dataLayer.Datasource.table;
-                        if (file && !table) {
-                            file = Path.join(projectDir, file);
-                            return P.ninvoke(FS, 'readFile', file, 'UTF-8')
-                                    .then(function(content) {
-                                        delete dataLayer.Datasource.file;
-                                        dataLayer.Datasource.table = '(' // 
-                                                + content + ') as data';
-                                    });
-                        }
-                    }) // 
+            .then(function() {
+                var file = dataLayer.Datasource.file;
+                var table = dataLayer.Datasource.table;
+                if (file && !table) {
+                    file = Path.join(projectDir, file);
+                    return readString(file).then(function(content) {
+                        delete dataLayer.Datasource.file;
+                        dataLayer.Datasource.table = '(' // 
+                                + content + ') as data';
+                    });
+                }
+            }) // 
             .then(function() {
                 return that._getDbCredentials(params, dataLayer.Datasource)
             }).then(function(data) {
@@ -385,7 +444,7 @@ _.extend(TileMillProjectLoader.prototype, Commons.Events, {
                     return _.isFunction(obj) ? obj() : obj;
                 })
             } else {
-                promise = P.nfcall(FS.readFile, fullPath, 'utf8');
+                promise = readString(fullPath);
             }
         } else {
             promise = P(stylesheet.cartocss);
@@ -408,33 +467,55 @@ _.extend(TileMillProjectLoader.prototype, Commons.Events, {
     },
 
     _getTilepinProjectFile : function(sourceKey) {
-        return this._getTileSourceFile(sourceKey, 'project.tilepin.xml');
+        var fileName = 'project.tilepin.xml';
+        return this._getTileSourceFile(sourceKey, fileName);
+    },
+    _getTilepinPropertiesFile : function(sourceKey) {
+        var fileName = 'project.tilepin.properties';
+        return this._getTileSourceFile(sourceKey, fileName);
     },
 
-    _prepareTileSourceFile : function(params) {
+    _prepareProjectFiles : function(params) {
         var that = this;
         var sourceKey = params.source;
         var xmlFile = that._getTileSourceFile(sourceKey, 'project.xml');
         var xmlTilepinFile = that._getTilepinProjectFile(sourceKey);
-        var promise;
-        if (FS.existsSync(xmlFile)) {
-            return P(xmlFile);
-        } else if (FS.existsSync(xmlTilepinFile)) {
-            return P(xmlTilepinFile);
-        } else {
-            that._loadingStyles = that._loadingStyles || {};
-            var promise = that._loadingStyles[xmlTilepinFile];
-            if (!promise) {
-                var projectDir = that._getTileSourceDir(sourceKey);
-                promise = that._loadingStyles[xmlTilepinFile] = that
-                        ._buildXmlStyleFile(projectDir, xmlTilepinFile, params)
-                        .fin(function() {
-                            delete that._loadingStyles[xmlTilepinFile];
-                        });
+        var propertiesTilepinFile = that._getTilepinPropertiesFile(sourceKey);
+        return P.all([ checkXmlFile(), checkPropertiesFile() ]).then(
+                function(files) {
+                    if (files[0] && files[1]) {
+                        return files;
+                    }
+                    that._loadingStyles = that._loadingStyles || {};
+                    var promise = that._loadingStyles[xmlTilepinFile];
+                    if (!promise) {
+                        var projectDir = that._getTileSourceDir(sourceKey);
+                        promise = that._loadingStyles[xmlTilepinFile] = that
+                                ._buildProjectFiles(projectDir, xmlTilepinFile,
+                                        propertiesTilepinFile, params)
+                                .fin(function() {
+                                    delete that._loadingStyles[xmlTilepinFile];
+                                });
+                    }
+                    return promise.then(function() {
+                        return [ xmlTilepinFile, propertiesTilepinFile ];
+                    });
+                });
+        function checkXmlFile() {
+            if (FS.existsSync(xmlFile)) {
+                return P(xmlFile);
+            } else if (FS.existsSync(xmlTilepinFile)) {
+                return P(xmlTilepinFile);
+            } else {
+                return P(null);
             }
-            return promise.then(function() {
-                return xmlTilepinFile;
-            });
+        }
+        function checkPropertiesFile() {
+            if (FS.existsSync(propertiesTilepinFile)) {
+                return P(propertiesTilepinFile);
+            } else {
+                return P(null);
+            }
         }
     },
 

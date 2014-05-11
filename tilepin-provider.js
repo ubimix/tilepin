@@ -3,7 +3,7 @@
  * projects as a source of tiles
  */
 var _ = require('underscore');
-var Path = require('path')
+var Path = require('path');
 var Url = require('url');
 var FS = require('fs');
 var Crypto = require('crypto');
@@ -20,6 +20,8 @@ var LRU = require('lru-cache');
 var Tilelive = require('tilelive');
 (require('tilelive-mapnik')).registerProtocols(Tilelive);
 (require('tilelive-vector')).registerProtocols(Tilelive);
+(require('tilejson')).registerProtocols(Tilelive);
+(require('tilelive-bridge')).registerProtocols(Tilelive);
 
 var TileBridge = require('tilelive-bridge');
 var TileMillProjectLoader = require('./tilepin-loader');
@@ -228,11 +230,13 @@ _.extend(TileMillSourceProvider.prototype, {
                 var promise = index[promiseKey];
                 if (!promise) {
                     promise = index[promiseKey] = P().then(function() {
-                        if (that.isVectorSourceType(params)) {
-                            // Load a vector tile
+                        var loadVector = that.isVectorSourceType(params) //
+                                && !that._isRemoteSource(params);
+                        if (loadVector) {
+                            // Load local vector tiles
                             return that._newTileBridgeSource(params);
                         } else {
-                            // Load rendered tiles
+                            // Load tiles supported by TileLive
                             return that._newTileliveSource(params);
                         }
                     }).fin(function() {
@@ -255,8 +259,23 @@ _.extend(TileMillSourceProvider.prototype, {
     setTileSourceProvider : function(provider) {
         this.options.tileSourceProvider = provider;
     },
-    _useVectorTiles : function(params, uri) {
-        return !!this.options.useVectorTiles;
+
+    _isRemoteSource : function(params) {
+        var source = params.source || '';
+        return source.indexOf(':') > 0;
+    },
+    _getVectorTilesParams : function(params, uri) {
+        var properties = uri.properties || {};
+        var result = null;
+        var source = properties.source
+                || (properties.useVectorTiles ? params.source : null);
+        if (source) {
+            result = _.extend({}, params, {
+                format : 'vtile',
+                source : source
+            })
+        }
+        return result;
     },
     _replaceVtilesProjection : function(str) {
         if (!str)
@@ -286,13 +305,14 @@ _.extend(TileMillSourceProvider.prototype, {
     },
     _newTileliveSource : function(params) {
         var that = this;
+        console.log('*** ', params)
         return that._getTileSourceConfig(params).then(function(uri) {
-            var useVectorTiles = that._useVectorTiles(params, uri);
-            if (useVectorTiles) {
+            var vectorTilesParams = that._getVectorTilesParams(params, uri);
+            if (vectorTilesParams) {
                 var provider = that.getTileSourceProvider(params);
-                return provider.loadTileSource(_.extend({}, params, {
-                    format : 'vtile'
-                })).then(function(vtileSource) {
+                return provider.loadTileSource(vectorTilesParams)
+                // 
+                .then(function(vtileSource) {
                     var tilesUri = _.extend({}, uri, {
                         protocol : 'vector:',
                         source : {
@@ -304,12 +324,8 @@ _.extend(TileMillSourceProvider.prototype, {
                     return P.ninvoke(Tilelive, 'load', tilesUri);
                 });
             } else {
-                var url = _.extend({}, uri, {
-                    protocol : 'mapnik:'
-                });
-                // var url = 'mapnik://' + uri.path;
-                // return P.ninvoke(Tilelive, 'load', url)
-                return P.ninvoke(Tilelive, 'load', url) // 
+                return P.ninvoke(Tilelive, 'load', uri)
+                // 
                 .then(function(tileSource) {
                     return that._wrapTileSource(tileSource, {
                         source : params.source

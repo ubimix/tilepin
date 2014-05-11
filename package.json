@@ -23,6 +23,7 @@
         "tilelive-mapnik" : "*",
         "tilelive-vector" : "*",
         "tilelive-bridge" : "*",
+        "tilejson" : "*",
         "sphericalmercator": "~1.0.2",
         "carto" : "~0.9.6",
         "js-yaml": "~3.0.2",

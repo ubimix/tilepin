@@ -232,35 +232,42 @@ _.extend(ProjectBasedTilesProvider.prototype, TilesProvider.prototype, {
         return this.tileSourceProvider.clearTileSource(params);
     },
 
+    _readTile : function(tileSource, params) {
+        var deferred = P.defer();
+        try {
+            var format = params.format;
+            var z = params.z;
+            var x = +params.x;
+            var y = +params.y;
+            var fn = format === 'grid.json' ? 'getGrid' : 'getTile';
+            tileSource[fn](z, x, y, function(err, tile, headers) {
+                if (err) {
+                    deferred.reject(err);
+                } else {
+                    deferred.resolve({
+                        tile : tile,
+                        headers : headers
+                    })
+                }
+            })
+        } catch (e) {
+            deferred.reject(e);
+        }
+        return deferred.promise;
+    },
+
     loadTile : function(params) {
         var that = this;
-        return that.tileSourceProvider.loadTileSource(params)
-                .then(
-                        function(tileSource) {
-                            var deferred = P.defer();
-                            try {
-                                var format = params.format;
-                                var z = params.z;
-                                var x = +params.x;
-                                var y = +params.y;
-                                var fn = format === 'grid.json' ? 'getGrid'
-                                        : 'getTile';
-                                tileSource[fn](z, x, y, function(err, tile,
-                                        headers) {
-                                    if (err) {
-                                        deferred.reject(err);
-                                    } else {
-                                        deferred.resolve({
-                                            tile : tile,
-                                            headers : headers
-                                        })
-                                    }
-                                })
-                            } catch (e) {
-                                deferred.reject(e);
-                            }
-                            return deferred.promise;
-                        });
+        var json = params.format == 'json';
+        if (json) {
+            params.format = 'vtile';
+        }
+        return that.tileSourceProvider.loadTileSource(params) //
+        .then(function(tileSource) {
+            return that._readTile(tileSource, params);
+        }).then(function(result) {
+            return result;
+        });
     },
     loadInfo : function(params) {
         var that = this;
@@ -270,7 +277,7 @@ _.extend(ProjectBasedTilesProvider.prototype, TilesProvider.prototype, {
                 });
     },
     getFormats : function(params) {
-        var result = [ 'grid.json', 'png', 'vtile' ];
+        var result = [ 'grid.json', 'png', 'vtile', 'json' ];
         if (params && _.isArray(params.formats)) {
             result = _.filter(result, function(format) {
                 return _.contains(params.formats, format);
