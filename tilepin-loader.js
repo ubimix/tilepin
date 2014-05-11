@@ -122,6 +122,7 @@ _.extend(TileMillProjectLoader.prototype, Commons.Events, {
                 pathname : files[0],
                 path : files[0],
                 properties : properties,
+                protocol : 'mapnik:',
                 xml : xml
             };
         })

@@ -305,7 +305,6 @@ _.extend(TileMillSourceProvider.prototype, {
     },
     _newTileliveSource : function(params) {
         var that = this;
-        console.log('*** ', params)
         return that._getTileSourceConfig(params).then(function(uri) {
             var vectorTilesParams = that._getVectorTilesParams(params, uri);
             if (vectorTilesParams) {
@@ -324,8 +323,7 @@ _.extend(TileMillSourceProvider.prototype, {
                     return P.ninvoke(Tilelive, 'load', tilesUri);
                 });
             } else {
-                return P.ninvoke(Tilelive, 'load', uri)
-                // 
+                return P.ninvoke(Tilelive, 'load', uri) // 
                 .then(function(tileSource) {
                     return that._wrapTileSource(tileSource, {
                         source : params.source
