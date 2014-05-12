@@ -129,6 +129,9 @@ _.extend(CachingTilesProvider.prototype, TilesProvider.prototype, {
         var that = this;
         return that._getTilesProvider(params, false) //
         .then(function(provider) {
+            if (!provider) {
+                return [];
+            }
             return provider.invalidate(params).then(function() {
                 return provider.getFormats(params);
             });
@@ -156,11 +159,13 @@ _.extend(CachingTilesProvider.prototype, TilesProvider.prototype, {
         var format = params.format;
         var cacheKey = that._getCacheKey(params, format);
         return that.cache.get(sourceKey, cacheKey).then(function(result) {
-            if (result)
+            if (result && !that._forceTileInvalidation(params))
                 return result;
             return that._getTilesProvider(params, true) //
             .then(function(provider) {
                 return provider.loadTile(params).then(function(result) {
+                    if (result.cache === false)
+                        return result;
                     return that.cache.set(sourceKey, cacheKey, result) // 
                     .then(function() {
                         return result;
@@ -179,6 +184,9 @@ _.extend(CachingTilesProvider.prototype, TilesProvider.prototype, {
             return provider.getFormats();
         });
     },
+    _forceTileInvalidation : function(params) {
+        return !!params.reload;
+    },
     _getCacheKey : function(params, prefix) {
         var x = +params.x;
         var y = +params.y;
@@ -190,7 +198,7 @@ _.extend(CachingTilesProvider.prototype, TilesProvider.prototype, {
             }
         })
         var key = array.join('-');
-        if (key != '') {
+        if (array.length == 3 /* zoom, x, y */) {
             if (prefix && prefix != '')
                 key = prefix + '-' + key;
         } else {

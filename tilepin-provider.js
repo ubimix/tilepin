@@ -76,6 +76,17 @@ _.extend(TileSourceProvider.prototype, Commons.Events, {
             return TileSourceProvider.TILE_TYPES[1];
         }
     },
+
+    _getSourceKey : function(params) {
+        return params.source || '';
+    },
+
+    _setSourceKey : function(params, source) {
+        return _.extend({}, params, {
+            source : source
+        })
+    },
+    
     _getEventManager : function() {
         var eventManager = this.options.eventManager || this;
         return eventManager;
@@ -185,15 +196,17 @@ _.extend(CachingTileSourceProvider.prototype, {
     setTileSourceProvider : function(provider) {
         this.options.tileSourceProvider = provider;
     },
+
     _getTileSourceCacheTTL : function() {
         return this.options.tileSourceCacheTTL || 60 * 60 * 1000;
     },
+
     /**
      * An internal method returning a cache key for the source defined in the
      * parameters.
      */
     _getSourceCacheKey : function(params, sourceType) {
-        var key = params.source || '';
+        var key = this._getSourceKey(params);
         key += '-' + sourceType;
         return key;
     },
@@ -222,7 +235,7 @@ _.extend(TileMillSourceProvider.prototype, {
     loadTileSource : function(params) {
         var that = this;
         return P().then(function() {
-            var sourceKey = params.source;
+            var sourceKey = that._getSourceKey(params);
             return P().then(function() {
                 var promiseKey = sourceKey + '-' + params.format;
                 var index = that._sourceLoadingIndex || {};
@@ -243,7 +256,7 @@ _.extend(TileMillSourceProvider.prototype, {
                         delete index[promiseKey];
                     });
                 }
-                return promise
+                return promise;
             });
         });
     },
@@ -261,19 +274,20 @@ _.extend(TileMillSourceProvider.prototype, {
     },
 
     _isRemoteSource : function(params) {
-        var source = params.source || '';
+        var source = this._getSourceKey(params);
         return source.indexOf(':') > 0;
     },
     _getVectorTilesParams : function(params, uri) {
         var properties = uri.properties || {};
         var result = null;
-        var source = properties.source
-                || (properties.useVectorTiles ? params.source : null);
-        if (source) {
-            result = _.extend({}, params, {
-                format : 'vtile',
-                source : source
-            })
+        var source = this._getSourceKey(properties);
+        if (source == '') {
+            source = (properties.useVectorTiles ? this._getSourceKey(params)
+                    : null);
+        }
+        if (source && source != '') {
+            result = this._setSourceKey(params, source)
+            result.format = 'vtile';
         }
         return result;
     },
@@ -291,13 +305,16 @@ _.extend(TileMillSourceProvider.prototype, {
         return this.projectLoader.loadProject(params);
     },
     _wrapTileSource : function(tileSource, params) {
+        var source = this._getSourceKey(params);
         var eventManager = this._getEventManager();
         var methods = _.map([ 'getTile', 'getGrid', 'getInfo' ],
                 function(name) {
                     return {
                         eventName : name,
                         methodName : name,
-                        params : params
+                        params : {
+                            source : source
+                        }
                     }
                 });
         return Commons.addEventTracingWithCallbacks(tileSource, methods,
@@ -325,9 +342,7 @@ _.extend(TileMillSourceProvider.prototype, {
             } else {
                 return P.ninvoke(Tilelive, 'load', uri) // 
                 .then(function(tileSource) {
-                    return that._wrapTileSource(tileSource, {
-                        source : params.source
-                    });
+                    return that._wrapTileSource(tileSource, params);
                 });
             }
         });
@@ -349,9 +364,7 @@ _.extend(TileMillSourceProvider.prototype, {
                 deferred.reject(e);
             }
             return deferred.promise.then(function(tileSource) {
-                return that._wrapTileSource(tileSource, {
-                    source : params.source
-                });
+                return that._wrapTileSource(tileSource, params);
             });
         });
     }

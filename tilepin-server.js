@@ -4,20 +4,32 @@ var EventManager = require('./tilepin-commons').EventManager;
 var _ = require('underscore');
 var app = express();
 var Url = require('url');
+var FS = require('fs');
 var Path = require('path');
 var Tilepin = require('./tilepin');
 var TilepinCache = require('./tilepin-cache-redis');
 var TileMillProjectLoader = require('./tilepin-loader');
 var MapExport = require('./tilepin-export');
 
-var port = 8888;
-var redisOptions = {};
-var tileCache = new TilepinCache(redisOptions);
 var workDir = process.cwd();
-var tmpFileDir = Path.join(workDir, 'tmp');
+var config = loadConfig(workDir, [ 'tilepin.config.js', 'tilepin.config.json',
+        'config.js', 'config.json' ]);
+var port = config.port || 8888;
+var redisOptions = config.redisOptions || {};
 
+var tileCache = new TilepinCache(redisOptions);
+
+var tmpFileDir = Path.join(workDir, 'tmp');
 var projectLoader = new TileMillProjectLoader({
-    dir : workDir
+    dir : workDir,
+    handleDatalayer : function(options) {
+        var dataLayer = options.dataLayer;
+        if (dataLayer.Datasource && dataLayer.Datasource.type == 'postgis') {
+            var params = options.params;
+            var sourceKey = params.source;
+            var dir = options.projectDir;
+        }
+    }
 });
 var eventManager = new EventManager();
 var options = {
@@ -231,4 +243,18 @@ function sendReply(req, res, statusCode, content, headers) {
         res.setHeader(key, value);
     })
     res.send(content);
+}
+
+function loadConfig(workDir, configFiles) {
+    var fullPath = _.find(_.map(configFiles, function(file) {
+        return Path.join(workDir, file);
+    }), function(file) {
+        return FS.existsSync(file);
+    })
+    if (!fullPath)
+        return {};
+    var name = require.resolve(fullPath);
+    delete require.cache[name];
+    var obj = require(fullPath);
+    return obj;
 }
