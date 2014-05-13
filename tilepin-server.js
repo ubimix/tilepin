@@ -25,9 +25,14 @@ var projectLoader = new TileMillProjectLoader({
     handleDatalayer : function(options) {
         var dataLayer = options.dataLayer;
         if (dataLayer.Datasource && dataLayer.Datasource.type == 'postgis') {
-            var params = options.params;
-            var sourceKey = params.source;
-            var dir = options.projectDir;
+            var db = config.db || {};
+            if (_.isFunction(db)) {
+                db.call(config, options);
+            } else {
+                var sourceKey = options.params.source;
+                var dbParams = db[sourceKey];
+                _.extend(dataLayer.Datasource, dbParams);
+            }
         }
     }
 });

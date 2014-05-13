@@ -86,7 +86,7 @@ _.extend(TileSourceProvider.prototype, Commons.Events, {
             source : source
         })
     },
-    
+
     _getEventManager : function() {
         var eventManager = this.options.eventManager || this;
         return eventManager;
@@ -243,8 +243,8 @@ _.extend(TileMillSourceProvider.prototype, {
                 var promise = index[promiseKey];
                 if (!promise) {
                     promise = index[promiseKey] = P().then(function() {
-                        var loadVector = that.isVectorSourceType(params) //
-                                && !that._isRemoteSource(params);
+                        var loadVector = that.isVectorSourceType(params) && // 
+                        !that._isRemoteSource(params);
                         if (loadVector) {
                             // Load local vector tiles
                             return that._newTileBridgeSource(params);
@@ -252,6 +252,8 @@ _.extend(TileMillSourceProvider.prototype, {
                             // Load tiles supported by TileLive
                             return that._newTileliveSource(params);
                         }
+                    }).then(function(tileSource) {
+                        return that._wrapTileSource(tileSource, params);
                     }).fin(function() {
                         delete index[promiseKey];
                     });
@@ -305,6 +307,9 @@ _.extend(TileMillSourceProvider.prototype, {
         return this.projectLoader.loadProject(params);
     },
     _wrapTileSource : function(tileSource, params) {
+        if (tileSource.__wrapped)
+            return tileSource;
+        tileSource.__wrapped = true;
         var source = this._getSourceKey(params);
         var eventManager = this._getEventManager();
         var methods = _.map([ 'getTile', 'getGrid', 'getInfo' ],
@@ -324,27 +329,23 @@ _.extend(TileMillSourceProvider.prototype, {
         var that = this;
         return that._getTileSourceConfig(params).then(function(uri) {
             var vectorTilesParams = that._getVectorTilesParams(params, uri);
-            if (vectorTilesParams) {
-                var provider = that.getTileSourceProvider(params);
-                return provider.loadTileSource(vectorTilesParams)
-                // 
-                .then(function(vtileSource) {
-                    var tilesUri = _.extend({}, uri, {
-                        protocol : 'vector:',
-                        source : {
-                            protocol : 'tilepin:',
-                            source : vtileSource
-                        }
-                    });
-                    tilesUri.xml = that._replaceVtilesProjection(tilesUri.xml);
-                    return P.ninvoke(Tilelive, 'load', tilesUri);
+            if (!vectorTilesParams)
+                return uri;
+            var provider = that.getTileSourceProvider(params);
+            return provider.loadTileSource(vectorTilesParams) //
+            .then(function(vtileSource) {
+                uri = _.extend({}, uri, {
+                    protocol : 'vector:',
+                    source : {
+                        protocol : 'tilepin:',
+                        source : vtileSource
+                    }
                 });
-            } else {
-                return P.ninvoke(Tilelive, 'load', uri) // 
-                .then(function(tileSource) {
-                    return that._wrapTileSource(tileSource, params);
-                });
-            }
+                uri.xml = that._replaceVtilesProjection(uri.xml);
+                return uri;
+            });
+        }).then(function(uri) {
+            return P.ninvoke(Tilelive, 'load', uri);
         });
     },
 
@@ -363,9 +364,7 @@ _.extend(TileMillSourceProvider.prototype, {
             } catch (e) {
                 deferred.reject(e);
             }
-            return deferred.promise.then(function(tileSource) {
-                return that._wrapTileSource(tileSource, params);
-            });
+            return deferred.promise;
         });
     }
 // var sourceType = this.getTileSourceType(params);
