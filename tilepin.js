@@ -262,10 +262,6 @@ _.extend(ProjectBasedTilesProvider.prototype, TilesProvider.prototype, {
 
     loadTile : function(params) {
         var that = this;
-        var json = params.format == 'json';
-        if (json) {
-            params.format = 'vtile';
-        }
         return that.tileSourceProvider.loadTileSource(params) //
         .then(function(tileSource) {
             return that._readTile(tileSource, params);
@@ -281,7 +277,7 @@ _.extend(ProjectBasedTilesProvider.prototype, TilesProvider.prototype, {
                 });
     },
     getFormats : function(params) {
-        var result = [ 'grid.json', 'png', 'vtile', 'json' ];
+        var result = [ 'grid.json', 'png', 'vtile' ];
         if (params && _.isArray(params.formats)) {
             result = _.filter(result, function(format) {
                 return _.contains(params.formats, format);

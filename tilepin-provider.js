@@ -36,7 +36,6 @@ function TileSourceProvider() {
         this.initialize.apply(this, arguments);
     }
 }
-TileSourceProvider.TILE_TYPES = [ 'vtiles', 'rendered' ];
 _.extend(TileSourceProvider.prototype, Commons.Events, {
 
     type : 'TileSourceProvider',
@@ -60,26 +59,27 @@ _.extend(TileSourceProvider.prototype, Commons.Events, {
         var that = this;
         var eventManager = that._getEventManager();
         return P().then(function() {
-            var sourceType = that._getSourceType(params);
-            var cacheKey = that._getCacheKey(params, sourceType);
+            var format = that._getTileFormat(params);
+            var cacheKey = that._getCacheKey(params, format);
             var tileSource = that.sourceCache.get(cacheKey);
             if (tileSource) {
                 eventManager.fire('loadTileSource:loadFromCache', {
                     eventName : 'loadTileSource:loadFromCache',
                     arguments : [ params ],
+                    format : format,
                     tileSource : tileSource
                 });
                 return tileSource;
             }
-            
+
             eventManager.fire('loadTileSource:missedInCache', {
                 eventName : 'loadTileSource:missedInCache',
+                format : format,
                 arguments : [ params ]
             });
+            var promiseKey = cacheKey;
             var index = that._sourceLoadingIndex || {};
             that._sourceLoadingIndex = index;
-            var sourceKey = that._getSourceKey(params);
-            var promiseKey = sourceKey + '-' + params.format;
             var promise = index[promiseKey];
             if (!promise) {
                 promise = index[promiseKey] = P().then(function() {
@@ -94,6 +94,7 @@ _.extend(TileSourceProvider.prototype, Commons.Events, {
                 eventManager.fire('loadTileSource:setInCache', {
                     eventName : 'loadTileSource:setInCache',
                     arguments : [ params ],
+                    format : format,
                     tileSource : tileSource
                 });
                 that.sourceCache.set(cacheKey, tileSource);
@@ -105,53 +106,57 @@ _.extend(TileSourceProvider.prototype, Commons.Events, {
     clearTileSource : function(params) {
         var that = this;
         return P().then(function() {
-            var promises = [];
-            var types = that.getAllTileSourceTypes();
-            _.each(types, function(type) {
-                var p = P().then(function() {
-                    var cacheKey = that._getCacheKey(params, type);
+            var formats = that._getTileFormats(params);
+            var promises = _.map(formats, function(format) {
+                return P().then(function() {
+                    var cacheKey = that._getCacheKey(params, format);
                     var source = that.sourceCache.get(cacheKey);
                     var eventManager = that._getEventManager();
                     var eventName = 'clearTileSource:clearCache';
                     eventManager.fire(eventName, {
                         eventName : eventName,
                         arguments : [ params ],
-                        type : type,
+                        format : format,
                         result : source
                     });
                     that.sourceCache.del(cacheKey);
-                }).then(function() {
-                    return that.projectLoader.clearProject(params);
-                });
-                promises.push(p);
+                })
             })
-            return P.all(promises);
+            return P.all(promises).then(function() {
+                return that.projectLoader.clearProject(params);
+            });
         });
     },
 
     /* ------------------------------ */
-    /** Returns all possible types of tile sources supported by this provider */
-    getAllTileSourceTypes : function(params) {
-        return TileSourceProvider.TILE_TYPES;
-    },
+
     isVectorSourceType : function(params) {
-        var format = params.format;
+        var format = this._getTileFormat(params);
         return format == 'vtile' || format == 'pbf'
     },
-    /**
-     * Returns a type of sources corresponding to the format parameter in the
-     * given arguments.
-     */
-    _getSourceType : function(params) {
-        if (this.isVectorSourceType(params)) {
-            return TileSourceProvider.TILE_TYPES[0];
-        } else {
-            return TileSourceProvider.TILE_TYPES[1];
-        }
+
+    _getTileFormat : function(params) {
+        return params.format || 'png';
+    },
+
+    _getTileFormats : function() {
+        // TODO: check that it is all possible formats
+        var formats = [ 'png', 'pbf', 'vtile', 'grid.json' ];
+        return formats;
     },
 
     _getSourceKey : function(params) {
         return params.source || '';
+    },
+
+    /**
+     * An internal method returning a cache key for the source defined in the
+     * parameters.
+     */
+    _getCacheKey : function(params, format) {
+        var key = this._getSourceKey(params);
+        key += '-' + format;
+        return key;
     },
 
     _getEventManager : function() {
@@ -161,16 +166,6 @@ _.extend(TileSourceProvider.prototype, Commons.Events, {
 
     _getTileSourceCacheTTL : function() {
         return this.options.tileSourceCacheTTL || 60 * 60 * 1000;
-    },
-
-    /**
-     * An internal method returning a cache key for the source defined in the
-     * parameters.
-     */
-    _getCacheKey : function(params, sourceType) {
-        var key = this._getSourceKey(params);
-        key += '-' + sourceType;
-        return key;
     },
 
     /**
