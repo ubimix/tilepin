@@ -44,27 +44,6 @@ function deleteFile(file) {
     });
 }
 
-function readString(file) {
-    return P.ninvoke(FS, 'readFile', file, 'UTF-8');
-}
-function writeString(file, str) {
-    return P.ninvoke(FS, 'writeFile', file, str, 'UTF-8');
-}
-function readJson(file) {
-    return readString(file).then(function(str) {
-        try {
-            return JSON.parse(str);
-        } catch (e) {
-            return {};
-        }
-    });
-}
-function writeJson(file, json) {
-    json = json || {};
-    var str = JSON.stringify(json);
-    return writeString(file, str);
-}
-
 _.extend(TileMillProjectLoader.prototype, Commons.Events, {
 
     clearProject : function(params) {
@@ -115,10 +94,12 @@ _.extend(TileMillProjectLoader.prototype, Commons.Events, {
         var that = this;
         return P().then(function() {
             return that._prepareProjectFiles(params);
-        }).then(function(f) {
-            files = f;
-            return P.all([ readString(files[0]), readJson(files[1]) ]);
-        }).then(function(array) {
+        }).then(
+                function(f) {
+                    files = f;
+                    return P.all([ Commons.IO.readString(files[0]),
+                            Commons.IO.readJson(files[1]) ]);
+                }).then(function(array) {
             var xml = array[0];
             var properties = array[1];
             return {
@@ -297,7 +278,7 @@ _.extend(TileMillProjectLoader.prototype, Commons.Events, {
                     msg += '). Dir: "' + dir + '".';
                     throw new Error(msg);
                 }
-                return readString(file).then(function(data) {
+                return Commons.IO.readString(file).then(function(data) {
                     var obj = fileInfo.parse(data);
                     if (params.dumpConfigAsYaml) {
                         console.log(Yaml.dump(obj));
@@ -374,7 +355,7 @@ _.extend(TileMillProjectLoader.prototype, Commons.Events, {
                 var table = dataLayer.Datasource.table;
                 if (file && !table) {
                     file = Path.join(projectDir, file);
-                    return readString(file).then(function(content) {
+                    return Commons.IO.readString(file).then(function(content) {
                         delete dataLayer.Datasource.file;
                         dataLayer.Datasource.table = '(' // 
                                 + content + ') as data';
@@ -414,15 +395,12 @@ _.extend(TileMillProjectLoader.prototype, Commons.Events, {
             var fullPath = Path.join(dir, stylesheet);
             if (Path.extname(fullPath) == '.js') {
                 promise = P().then(function() {
-                    // Cleanup the cache
-                    var name = require.resolve(fullPath);
-                    delete require.cache[name];
-                    // Load the module again
-                    var obj = require(fullPath);
-                    return _.isFunction(obj) ? obj() : obj;
+                    Commons.IO.clearObject(fullPath);
+                    var obj = Commons.IO.loadObject(fullPath);
+                    return obj;
                 })
             } else {
-                promise = readString(fullPath);
+                promise = Commons.IO.readString(fullPath);
             }
         } else {
             promise = P(stylesheet.cartocss);
@@ -484,29 +462,20 @@ _.extend(TileMillProjectLoader.prototype, Commons.Events, {
                 });
         function checkXmlFile() {
             var xmlFile = that._getTileSourceFile(sourceKey, 'project.xml');
-            if (FS.existsSync(xmlFile)) {
-                return P(xmlFile);
-            } else if (FS.existsSync(xmlTilepinFile)) {
-                return P(xmlTilepinFile);
-            } else {
-                return P(null);
-            }
+            return Commons.IO.findExistingFile([ xmlFile, xmlTilepinFile ]);
         }
         function writeXmlFile(json) {
             return that._generateMapnikXml(xmlTilepinFile, json).then(
                     function(xml) {
-                        return writeString(xmlTilepinFile, xml);
+                        return Commons.IO.writeString(xmlTilepinFile, xml);
                     });
         }
         function checkPropertiesFile() {
-            if (FS.existsSync(propertiesTilepinFile)) {
-                return P(propertiesTilepinFile);
-            } else {
-                return P(null);
-            }
+            return Commons.IO.findExistingFile(propertiesTilepinFile);
         }
         function writePropertiesFile(json) {
-            return writeJson(propertiesTilepinFile, json.properties);
+            return Commons.IO.writeJson(propertiesTilepinFile, // 
+            json.properties);
         }
     },
 

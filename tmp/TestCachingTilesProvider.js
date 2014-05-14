@@ -2,7 +2,9 @@ var expect = require('expect.js');
 var Tilepin = require('../tilepin');
 var $ = require('cheerio');
 var _ = require('underscore');
-var Q = require('q');
+var Commons = require('../tilepin-commons');
+var P = Commons.P;
+var TileSourceProvider = require('../tilepin-provider');
 var FS = require('fs');
 var Path = require('path');
 
@@ -14,7 +16,7 @@ _.extend(TestTilesProvider.prototype, Tilepin.TilesProvider.prototype, {
     loadTile : function(params) {
         this._hits = this._hits || 0;
         this._hits++;
-        return Q(this.options.name);
+        return P(this.options.name);
     },
     getHits : function() {
         return this._hits;
@@ -33,13 +35,23 @@ describe('Tilepin.CachingTilesProvider '
                 name : 'two'
             }),
         }
-        var provider = new Tilepin.CachingTilesProvider({
-            provider : new Tilepin.DispatchingTilesProvider({
-                getProvider : function(params) {
-                    return Q(providers[params.source]);
-                }
-            })
-        })
+
+        var workDir = './';
+        var tmpDir = './';
+        var projectLoader = new TileMillProjectLoader({
+            dir : workDir,
+        });
+        var eventManager = new EventManager();
+        var options = {
+            eventManager : eventManager,
+            projectLoader : projectLoader,
+            tmpDir : tmpFileDir
+        };
+        var NS = TileSourceProvider;
+        var tmProvider = new NS.TileMillSourceProvider(options);
+        var provider = new NS.CachingTileSourceProvider(_.extend({}, options, {
+            tileSourceProvider : tmProvider
+        }));
         var params = {
             source : 'projectOne',
             x : 1,
@@ -47,8 +59,9 @@ describe('Tilepin.CachingTilesProvider '
             z : 3,
             format : 'foo'
         }
-        return Q()
-        // The first call hits the original source of tiles. Cache is
+        return P()
+        // The first call hits the original source of
+        // tiles. Cache is
         // not used.
         .then(function() {
             return provider.loadTile(params).then(function(result) {
@@ -56,7 +69,8 @@ describe('Tilepin.CachingTilesProvider '
                 expect(providers.projectOne.getHits()).to.eql(1);
             });
         })
-        // Reloads the tile; It should not hit the original tile source;
+        // Reloads the tile; It should not hit the
+        // original tile source;
         // The result comes from the cache.
         .then(function() {
             return provider.loadTile(params).then(function(result) {
@@ -64,7 +78,8 @@ describe('Tilepin.CachingTilesProvider '
                 expect(providers.projectOne.getHits()).to.eql(1);
             });
         })
-        // Reset cache and load tiles again. It should hit the original
+        // Reset cache and load tiles again. It should
+        // hit the original
         // source.
         .then(function() {
             return provider.invalidate(params).then(function() {
@@ -89,7 +104,7 @@ describe('Tilepin.ProjectBasedTilesProvider', function() {
         var provider = new Tilepin.ProjectBasedTilesProvider({
             dir : dir
         });
-        Q().then(function() {
+        P().then(function() {
             return provider.invalidate({
                 source : 'project'
             });
@@ -105,7 +120,7 @@ describe('Tilepin.ProjectBasedTilesProvider', function() {
         //
         // .then(
         // function(info) {
-        // return Q.ninvoke(FS, 'writeFile', './tile-1-0-0.png',
+        // return P.ninvoke(FS, 'writeFile', './tile-1-0-0.png',
         // info.tile).then(function() {
         // return info;
         // });
@@ -113,7 +128,7 @@ describe('Tilepin.ProjectBasedTilesProvider', function() {
         //
         .then(function(info) {
             var file = Path.resolve(dir, './expected/expected-tile-1-0-0.png');
-            return Q.ninvoke(FS, 'readFile', file).then(function(buf) {
+            return P.ninvoke(FS, 'readFile', file).then(function(buf) {
                 var first = getHash(info.tile);
                 var second = getHash(buf);
                 expect(first).to.eql(second);

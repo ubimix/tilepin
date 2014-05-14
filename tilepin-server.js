@@ -6,6 +6,7 @@ var app = express();
 var Url = require('url');
 var FS = require('fs');
 var Path = require('path');
+var Commons = require('./tilepin-commons');
 var Tilepin = require('./tilepin');
 var TilepinCache = require('./tilepin-cache-redis');
 var TileMillProjectLoader = require('./tilepin-loader');
@@ -38,7 +39,6 @@ var projectLoader = new TileMillProjectLoader({
 });
 var eventManager = new EventManager();
 var options = {
-    useVectorTiles : false,
     eventManager : eventManager,
     cache : tileCache,
     styleDir : workDir,
@@ -251,15 +251,10 @@ function sendReply(req, res, statusCode, content, headers) {
 }
 
 function loadConfig(workDir, configFiles) {
-    var fullPath = _.find(_.map(configFiles, function(file) {
+    var file = Commons.IO.findExistingFile(_.map(configFiles, function(file) {
         return Path.join(workDir, file);
-    }), function(file) {
-        return FS.existsSync(file);
-    })
-    if (!fullPath)
+    }));
+    if (!file)
         return {};
-    var name = require.resolve(fullPath);
-    delete require.cache[name];
-    var obj = require(fullPath);
-    return obj;
+    return Commons.IO.loadObject(file);
 }

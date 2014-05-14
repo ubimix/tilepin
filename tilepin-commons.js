@@ -1,5 +1,6 @@
 var _ = require('underscore');
 var P = require('q');
+var FS = require('fs');
 
 var Events = {
 
@@ -48,9 +49,69 @@ function EventManager() {
 }
 _.extend(EventManager.prototype, Events);
 
+var IO = {
+
+    /**
+     * Cleanup the cached loaded object.
+     */
+    clearObject : function(path) {
+        var name = require.resolve(path);
+        delete require.cache[name];
+    },
+
+    /**
+     * Load an object corresponding to the specified path. It could be a JSON
+     * object or a dynamic javascript module returning a module or a function
+     * producing the final object.
+     */
+    loadObject : function(path) {
+        IO.clearObject(path);
+        var obj = require(path);
+        return _.isFunction(obj) ? obj() : obj;
+    },
+
+    /** Finds and returns the first existing file from the specified list. */
+    findExistingFile : function(files) {
+        files = _.isString(files) ? [ files ] : _.toArray(files);
+        return _.find(files, function(file) {
+            return FS.existsSync(file);
+        });
+    },
+
+    /** Read an UTF-8 encoded string from the specified file. */
+    readString : function(file) {
+        return P.ninvoke(FS, 'readFile', file, 'UTF-8');
+    },
+
+    /** Writes an UTF-8 encoded string in the specified file. */
+    writeString : function(file, str) {
+        return P.ninvoke(FS, 'writeFile', file, str, 'UTF-8');
+    },
+
+    /** Reads a JSON object from the specified file. */
+    readJson : function(file) {
+        return IO.readString(file).then(function(str) {
+            try {
+                return JSON.parse(str);
+            } catch (e) {
+                return {};
+            }
+        });
+    },
+
+    /** Writes a JSON object in the specified file. */
+    writeJson : function(file, json) {
+        json = json || {};
+        var str = JSON.stringify(json);
+        return IO.writeString(file, str);
+    }
+}
+
 module.exports = {
 
     P : P,
+
+    IO : IO,
 
     /** Events mixins */
     Events : Events,
