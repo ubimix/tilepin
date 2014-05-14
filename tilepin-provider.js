@@ -18,12 +18,12 @@ var AdmZip = require('adm-zip');
 var LRU = require('lru-cache');
 
 var Tilelive = require('tilelive');
-(require('tilelive-mapnik')).registerProtocols(Tilelive);
-(require('tilelive-vector')).registerProtocols(Tilelive);
-(require('tilejson')).registerProtocols(Tilelive);
-(require('tilelive-bridge')).registerProtocols(Tilelive);
+var extensions = [ 'tilelive-mapnik', 'tilelive-vector', 'tilelive-bridge',
+        'tilejson' ];
+_.each(extensions, function(extension) {
+    (require(extension)).registerProtocols(Tilelive);
+});
 
-var TileBridge = require('tilelive-bridge');
 var TileMillProjectLoader = require('./tilepin-loader');
 
 // Register a fake protocol allowing to return the control to the renderer
@@ -176,9 +176,6 @@ _.extend(CachingTileSourceProvider.prototype, {
                         result : source
                     });
                     that.sourceCache.del(sourceKey);
-                    if (source && _.isFunction(source.close)) {
-                        return P.ninvoke(source, 'close');
-                    }
                 }).then(function() {
                     var provider = that.getTileSourceProvider();
                     return provider.clearTileSource(params);
@@ -243,15 +240,7 @@ _.extend(TileMillSourceProvider.prototype, {
                 var promise = index[promiseKey];
                 if (!promise) {
                     promise = index[promiseKey] = P().then(function() {
-                        var loadVector = that.isVectorSourceType(params) && // 
-                        !that._isRemoteSource(params);
-                        if (loadVector) {
-                            // Load local vector tiles
-                            return that._newTileBridgeSource(params);
-                        } else {
-                            // Load tiles supported by TileLive
-                            return that._newTileliveSource(params);
-                        }
+                        return that._newTileliveSource(params);
                     }).then(function(tileSource) {
                         return that._wrapTileSource(tileSource, params);
                     }).fin(function() {
@@ -293,16 +282,6 @@ _.extend(TileMillSourceProvider.prototype, {
         }
         return result;
     },
-    _replaceVtilesProjection : function(str) {
-        if (!str)
-            return str;
-        // Replace all SRS references by the Google SRS (900913)
-        return str.replace(/srs=".*?"/gim, function(match) {
-            return 'srs="+proj=merc ' + '+a=6378137 +b=6378137 '
-                    + '+lat_ts=0.0 +lon_0=0.0 ' + '+x_0=0.0 +y_0=0.0 +k=1.0 '
-                    + '+units=m +nadgrids=@null ' + '+wktext +no_defs +over"';
-        });
-    },
     _getTileSourceConfig : function(params) {
         return this.projectLoader.loadProject(params);
     },
@@ -327,47 +306,55 @@ _.extend(TileMillSourceProvider.prototype, {
     },
     _newTileliveSource : function(params) {
         var that = this;
-        return that._getTileSourceConfig(params).then(function(uri) {
-            var vectorTilesParams = that._getVectorTilesParams(params, uri);
-            if (!vectorTilesParams)
-                return uri;
-            var provider = that.getTileSourceProvider(params);
-            return provider.loadTileSource(vectorTilesParams) //
-            .then(function(vtileSource) {
-                uri = _.extend({}, uri, {
-                    protocol : 'vector:',
-                    source : {
-                        protocol : 'tilepin:',
-                        source : vtileSource
+        return that._getTileSourceConfig(params).then(
+                function(uri) {
+                    var loadVector = that.isVectorSourceType(params)
+                            && !that._isRemoteSource(params);
+                    if (loadVector) {
+                        // Generate vector tiles using existing tilemill
+                        // projects
+                        uri = _.extend({}, uri, {
+                            protocol : 'bridge:'
+                        });
+                        return uri;
+                    } else {
+                        // Generate image from vector tile sources
+                        var vectorTilesParams = that._getVectorTilesParams(
+                                params, uri);
+                        if (!vectorTilesParams)
+                            return uri;
+                        var provider = that.getTileSourceProvider(params);
+                        return provider.loadTileSource(vectorTilesParams).then(
+                                function(vtileSource) {
+                                    uri = _.extend({}, uri, {
+                                        protocol : 'vector:',
+                                        source : {
+                                            protocol : 'tilepin:',
+                                            source : vtileSource
+                                        }
+                                    });
+                                    // uri.xml = that
+                                    // ._replaceVtilesProjection(uri.xml);
+                                    return uri;
+                                });
                     }
-                });
-                uri.xml = that._replaceVtilesProjection(uri.xml);
-                return uri;
-            });
-        }).then(function(uri) {
+                }).then(function(uri) {
             return P.ninvoke(Tilelive, 'load', uri);
         });
+
+        // _replaceVtilesProjection : function(str) {
+        // if (!str)
+        // return str;
+        // // Replace all SRS references by the Google SRS (900913)
+        // return str.replace(/srs=".*?"/gim, function(match) {
+        // return 'srs="+proj=merc ' + '+a=6378137 +b=6378137 '
+        // + '+lat_ts=0.0 +lon_0=0.0 ' + '+x_0=0.0 +y_0=0.0 +k=1.0 '
+        // + '+units=m +nadgrids=@null ' + '+wktext +no_defs +over"';
+        // });
+        // },
+
     },
 
-    _newTileBridgeSource : function(params, uri) {
-        var that = this;
-        return that._getTileSourceConfig(params).then(function(uri) {
-            var deferred = P.defer();
-            try {
-                new TileBridge(uri.path, function(err, bridge) {
-                    if (err) {
-                        deferred.reject(err);
-                    } else {
-                        deferred.resolve(bridge);
-                    }
-                });
-            } catch (e) {
-                deferred.reject(e);
-            }
-            return deferred.promise;
-        });
-    }
-// var sourceType = this.getTileSourceType(params);
 })
 
 module.exports = TileSourceProvider;
