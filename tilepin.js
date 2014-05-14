@@ -216,12 +216,8 @@ function ProjectBasedTilesProvider(options) {
     // this.wrapper.setTilesProvider(provider) methods calls.
     this.options.tilesProvider = this;
     this.setTopTilesProvider(this);
-    this.tmSourceProvider = new TileSourceProvider.TileMillSourceProvider(
-            this.options);
-    this.tileSourceProvider = new TileSourceProvider.CachingTileSourceProvider(
-            _.extend({}, options, {
-                tileSourceProvider : this.tmSourceProvider
-            }));
+
+    this.tileSourceProvider = new TileSourceProvider(this.options);
     var eventManager = this._getEventManager();
     Commons.addEventTracing(this, [ 'invalidate', 'loadTile', 'loadInfo' ],
             eventManager);
