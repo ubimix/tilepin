@@ -26,6 +26,76 @@ _.each(extensions, function(extension) {
 
 var TileMillProjectLoader = require('./tilepin-loader');
 
+function TileSourceWrapper(options) {
+    this.options = options;
+    this._tileSource = null;
+    this._promise = null;
+}
+_.extend(TileSourceWrapper.prototype, {
+
+    prepareTileSource : function(params) {
+        var that = this;
+        if (!that._promise) {
+            that._promise = that._doLoadTileSource(params).then(
+                    function(source) {
+                        that._tileSource = source;
+                        return that._tileSource;
+                    }, function(err) {
+                        that._reset();
+                        throw err;
+                    });
+        }
+        return that._promise;
+    },
+
+    close : function() {
+        var that = this;
+        if (!that._promise) {
+            return P();
+        }
+        return that._promise.fin(function() {
+            if (that._tileSource) {
+                // console.log('Destroying the tileSource: ', tileSource);
+            }
+            that._reset();
+        })
+    },
+
+    _reset : function() {
+        var that = this;
+        that._promise = null;
+        that._tileSource = null;
+    },
+
+    _doLoadTileSource : function(params) {
+        var that = this;
+        var uri = that.options.uri;
+        var promise = P.ninvoke(Tilelive, 'load', uri);
+        var eventManager = that._getEventManager();
+        if (eventManager) {
+            promise = promise.then(function(tileSource) {
+                var methods = _.map([ 'getTile', 'getGrid', 'getInfo' ],
+                        function(name) {
+                            return {
+                                eventName : name,
+                                methodName : name,
+                                params : params
+                            }
+                        });
+                return Commons.addEventTracingWithCallbacks(tileSource,
+                        methods, eventManager);
+            })
+        }
+        return promise;
+    },
+
+    _getEventManager : function() {
+        return this.options.tilesProvider ? this.options.tilesProvider
+                ._getEventManager() : null;
+    }
+
+})
+
 // Register a fake protocol allowing to return the control to the renderer
 Tilelive.protocols['tilepin:'] = function(options, callback) {
     callback(null, options.source);
@@ -61,15 +131,15 @@ _.extend(TileSourceProvider.prototype, Commons.Events, {
         return P().then(function() {
             var format = that._getTileFormat(params);
             var cacheKey = that._getCacheKey(params, format);
-            var tileSource = that.sourceCache.get(cacheKey);
-            if (tileSource) {
+            var wrapper = that.sourceCache.get(cacheKey);
+            if (wrapper) {
                 eventManager.fire('loadTileSource:loadFromCache', {
                     eventName : 'loadTileSource:loadFromCache',
                     arguments : [ params ],
                     format : format,
-                    tileSource : tileSource
+                    wrapper : wrapper
                 });
-                return tileSource;
+                return wrapper;
             }
 
             eventManager.fire('loadTileSource:missedInCache', {
@@ -83,25 +153,28 @@ _.extend(TileSourceProvider.prototype, Commons.Events, {
             var promise = index[promiseKey];
             if (!promise) {
                 promise = index[promiseKey] = P().then(function() {
-                    return that._newTileliveSource(params);
-                }).then(function(tileSource) {
-                    return that._wrapTileSource(tileSource, params);
+                    return that._loadTileliveSourceUri(params);
+                }).then(function(uri) {
+                    return that._wrapTileSource(uri, params);
                 }).fin(function() {
                     delete index[promiseKey];
                 });
             }
-            return promise.then(function(tileSource) {
+            return promise.then(function(wrapper) {
                 eventManager.fire('loadTileSource:setInCache', {
                     eventName : 'loadTileSource:setInCache',
                     arguments : [ params ],
                     format : format,
-                    tileSource : tileSource
+                    wrapper : wrapper
                 });
-                that.sourceCache.set(cacheKey, tileSource);
-                return tileSource;
+                that.sourceCache.set(cacheKey, wrapper);
+                return wrapper;
             });
+        }).then(function(wrapper) {
+            return wrapper.prepareTileSource(params);
         });
     },
+
     /** Cleans up a tile source corresponding to the specified parameters */
     clearTileSource : function(params) {
         var that = this;
@@ -110,16 +183,20 @@ _.extend(TileSourceProvider.prototype, Commons.Events, {
             var promises = _.map(formats, function(format) {
                 return P().then(function() {
                     var cacheKey = that._getCacheKey(params, format);
-                    var source = that.sourceCache.get(cacheKey);
+                    var wrapper = that.sourceCache.get(cacheKey);
+                    if (!wrapper) {
+                        return;
+                    }
                     var eventManager = that._getEventManager();
                     var eventName = 'clearTileSource:clearCache';
                     eventManager.fire(eventName, {
                         eventName : eventName,
                         arguments : [ params ],
                         format : format,
-                        result : source
+                        wrapper : wrapper
                     });
                     that.sourceCache.del(cacheKey);
+                    return wrapper.close();
                 })
             })
             return P.all(promises).then(function() {
@@ -260,24 +337,14 @@ _.extend(TileSourceProvider.prototype, Commons.Events, {
     // });
     // },
 
-    _wrapTileSource : function(tileSource, params) {
-        if (tileSource.__wrapped)
-            return tileSource;
-        tileSource.__wrapped = true;
-        var source = this._getSourceKey(params);
-        var eventManager = this._getEventManager();
-        var methods = _.map([ 'getTile', 'getGrid', 'getInfo' ],
-                function(name) {
-                    return {
-                        eventName : name,
-                        methodName : name,
-                        params : {
-                            source : source
-                        }
-                    }
-                });
-        return Commons.addEventTracingWithCallbacks(tileSource, methods,
-                eventManager);
+    /* ---------------------------------------------------------------------- */
+    // Handling tile source wrappers (creating / initialisation / destruction)
+    _wrapTileSource : function(uri, params) {
+        return new TileSourceWrapper({
+            uri : uri,
+            params : params,
+            tilesProvider : this,
+        });
     },
 
 });
