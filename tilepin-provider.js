@@ -27,65 +27,101 @@ _.each(extensions, function(extension) {
 var TileMillProjectLoader = require('./tilepin-loader');
 
 function TileSourceWrapper(options) {
-    this.options = options;
-    this._tileSource = null;
-    this._promise = null;
+    var that = this;
+    that.options = options;
+    that._tileSource = null;
+    that._uri = that.options.uri;
+    that._promises = that._newCache(that._getMaxTimeout());
 }
 _.extend(TileSourceWrapper.prototype, {
 
     prepareTileSource : function(params) {
         var that = this;
-        if (!that._promise) {
-            that._promise = that._doLoadTileSource(params).then(
-                    function(source) {
-                        that._tileSource = source;
-                        return that._tileSource;
-                    }, function(err) {
-                        that._reset();
-                        throw err;
-                    });
+        var id = that._getId(params);
+        var promise = that._promises.get(id);
+        if (!promise) {
+            promise = that._doLoadTileSource(params).fail(function(err) {
+                that._promises.del(id);
+                throw err;
+            });
+            that._promises.set(id, promise);
         }
-        return that._promise;
+        return promise;
     },
 
     close : function() {
-        var that = this;
-        if (!that._promise) {
-            return P();
-        }
-        return that._promise.fin(function() {
-            if (that._tileSource) {
-                // console.log('Destroying the tileSource: ', tileSource);
-            }
-            that._reset();
+        this._reset();
+    },
+
+    _closeTileSource : function(promise) {
+        return promise.then(function(tileSource) {
+            console.log('Destroying the tileSource: ', tileSource);
         })
+    },
+
+    _getId : function(params) {
+        var uri = this._uri
+        var id = '';
+        if (uri.handler && _.isFunction(uri.handler.getId)) {
+            id = uri.handler.getId(params, uri);
+        }
+        return id;
+    },
+
+    _prepareUri : function(params) {
+        var that = this;
+        return P().then(function() {
+            var uri = that._uri
+            if (uri.handler && _.isFunction(uri.handler.prepareUri)) {
+                return uri.handler.prepareUri(params, uri);
+            }
+            return uri;
+        });
+    },
+
+    _newCache : function(timeout) {
+        var that = this;
+        return new LRU({
+            dispose : function(key, n) {
+                that._closeTileSource(n);
+            },
+            maxAge : timeout
+        });
+    },
+
+    _getMaxTimeout : function() {
+        return 1000 * 60 * 60;
     },
 
     _reset : function() {
         var that = this;
-        that._promise = null;
+        that._promises.reset();
         that._tileSource = null;
     },
 
     _doLoadTileSource : function(params) {
         var that = this;
-        var uri = that.options.uri;
-        var promise = P.ninvoke(Tilelive, 'load', uri);
-        var eventManager = that._getEventManager();
-        if (eventManager) {
-            promise = promise.then(function(tileSource) {
-                var methods = _.map([ 'getTile', 'getGrid', 'getInfo' ],
-                        function(name) {
-                            return {
-                                eventName : name,
-                                methodName : name,
-                                params : params
-                            }
-                        });
-                return Commons.addEventTracingWithCallbacks(tileSource,
-                        methods, eventManager);
-            })
-        }
+        return that._prepareUri(params).then(function(uri) {
+            return P.ninvoke(Tilelive, 'load', uri);
+        }).then(
+                function(tileSource) {
+                    var eventManager = that._getEventManager();
+                    if (eventManager) {
+                        var methods = _.map(
+                                [ 'getTile', 'getGrid', 'getInfo' ], function(
+                                        name) {
+                                    return {
+                                        eventName : name,
+                                        methodName : name,
+                                        params : params
+                                    }
+                                });
+                        return Commons.addEventTracingWithCallbacks(tileSource,
+                                methods, eventManager);
+                    } else {
+                        return tileSource;
+                    }
+                })
         return promise;
     },
 

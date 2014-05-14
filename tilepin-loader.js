@@ -102,15 +102,30 @@ _.extend(TileMillProjectLoader.prototype, Commons.Events, {
                 }).then(function(array) {
             var xml = array[0];
             var properties = array[1];
+            var handler = that._getUriHandler(properties, params);
             return {
                 base : Path.dirname(files[0]),
                 pathname : files[0],
                 path : files[0],
                 properties : properties,
                 protocol : 'mapnik:',
-                xml : xml
+                xml : xml,
+                handler : handler
             };
         })
+    },
+
+    _getUriHandler : function(properties, params) {
+        var that = this;
+        var handler = undefined;
+        if (properties.dynamic) {
+            var sourceKey = that._getSourceKey(params);
+            var file = that._getTileSourceFile(sourceKey, properties.dynamic);
+            if (file) {
+                handler = Commons.IO.loadObject(file);
+            }
+        }
+        return handler;
     },
 
     _getTileSourceDir : function(sourceKey) {
