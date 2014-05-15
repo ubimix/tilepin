@@ -12,20 +12,75 @@ var TileSourceManager = require('./tilepin-provider');
 
 function TilesProvider(options) {
     this.options = options || {};
+    this.cache = options.cache || new MemCache();
+    this.provider = options.provider;
+    this.tileSourceManager = new TileSourceManager(this.options);
+    var eventManager = this._getEventManager();
+    Commons.addEventTracing(this, [ 'invalidate', 'loadTile', 'loadInfo' ],
+            eventManager);
 }
 _.extend(TilesProvider.prototype, Commons.Events, {
+
     invalidate : function(params) {
-        return P();
+        var that = this;
+        return that._getFormats(params).then(function(formats) {
+            var sourceKey = that._getSourceKey(params);
+            var resetAll = true;
+            return P.all(_.map(formats, function(format) {
+                var cacheKey = that._getCacheKey(params, format);
+                if (cacheKey) {
+                    resetAll = false;
+                    return that.cache.reset(sourceKey, cacheKey);
+                }
+            })).then(function(result) {
+                if (resetAll) {
+                    return that.cache.reset(sourceKey);
+                }
+                return result;
+            })
+        }).then(function() {
+            return that.tileSourceManager.clearTileSourceProvider(params);
+        });
     },
+
     loadTile : function(params) {
-        return P(null);
+        var that = this;
+        var sourceKey = that._getSourceKey(params);
+        var format = params.format;
+        var cacheKey = that._getCacheKey(params, format);
+        return that.cache.get(sourceKey, cacheKey).then(function(result) {
+            if (result && !that._forceTileInvalidation(params))
+                return result;
+            return that._loadTileSource(params).then(function(tileSource) {
+                return that._readTile(tileSource, params);
+            }).then(function(result) {
+                if (result.cache === false)
+                    return result;
+                return that.cache.set(sourceKey, cacheKey, result) // 
+                .then(function() {
+                    return result;
+                });
+            });
+        });
     },
+
     loadInfo : function(params) {
-        return P(null);
+        var that = this;
+        return that._loadTileSource(params).then(function(tileSource) {
+            return P.ninvoke(tileSource, 'getInfo');
+        });
     },
-    getFormats : function(params) {
-        return P(this.options.formats || this.formats || []);
+
+    _getFormats : function(params) {
+        var result = [ 'grid.json', 'png', 'vtile' ];
+        if (params && _.isArray(params.formats)) {
+            result = _.filter(result, function(format) {
+                return _.contains(params.formats, format);
+            })
+        }
+        return P(result);
     },
+
     _getSourceKey : function(params, suffix) {
         var key = params.source || '';
         if (suffix) {
@@ -43,84 +98,13 @@ _.extend(TilesProvider.prototype, Commons.Events, {
     _getEventManager : function() {
         var eventManager = this.options.eventManager || this;
         return eventManager;
-    }
-})
-
-/**
- * 
- * @param options.provider
- *            source of tiles
- * @param options.cache
- *            an implementation of a cache used to store cached objects
- * 
- */
-function CachingTilesProvider(options) {
-    this.options = options;
-    this.cache = options.cache || new MemCache();
-    this.provider = options.provider;
-    var eventManager = this._getEventManager();
-    Commons.addEventTracing(this, [ 'invalidate', 'loadTile', 'loadInfo' ]);
-}
-_.extend(CachingTilesProvider.prototype, TilesProvider.prototype, {
-
-    invalidate : function(params) {
-        var that = this;
-        return that._getTilesProvider(params, false) //
-        .then(function(provider) {
-            if (!provider) {
-                return [];
-            }
-            return provider.invalidate(params).then(function() {
-                return provider.getFormats(params);
-            });
-        })// 
-        .then(function(formats) {
-            var sourceKey = that._getSourceKey(params);
-            var resetAll = true;
-            return P.all(_.map(formats, function(format) {
-                var cacheKey = that._getCacheKey(params, format);
-                if (cacheKey) {
-                    resetAll = false;
-                    return that.cache.reset(sourceKey, cacheKey);
-                }
-            })).then(function(result) {
-                if (resetAll) {
-                    return that.cache.reset(sourceKey);
-                }
-                return result;
-            })
-        });
     },
-    loadTile : function(params) {
+    _loadTileSource : function(params) {
         var that = this;
-        var sourceKey = that._getSourceKey(params);
-        var format = params.format;
-        var cacheKey = that._getCacheKey(params, format);
-        return that.cache.get(sourceKey, cacheKey).then(function(result) {
-            if (result && !that._forceTileInvalidation(params))
-                return result;
-            return that._getTilesProvider(params, true) //
-            .then(function(provider) {
-                return provider.loadTile(params).then(function(result) {
-                    if (result.cache === false)
-                        return result;
-                    return that.cache.set(sourceKey, cacheKey, result) // 
-                    .then(function() {
-                        return result;
-                    });
+        return that.tileSourceManager.loadTileSourceProvider(params).then(
+                function(provider) {
+                    return provider.prepareTileSource(params);
                 });
-            });
-        });
-    },
-    loadInfo : function(params) {
-        return this._getTilesProvider(params, true).then(function(provider) {
-            return provider.loadInfo(params);
-        });
-    },
-    getFormats : function() {
-        return this._getTilesProvider(params, true).then(function(provider) {
-            return provider.getFormats();
-        });
     },
     _forceTileInvalidation : function(params) {
         return !!params.reload;
@@ -143,30 +127,6 @@ _.extend(CachingTilesProvider.prototype, TilesProvider.prototype, {
             key = undefined;
         }
         return key;
-    }
-})
-
-function ProjectBasedTilesProvider(options) {
-    this.options = options || {};
-    this.options.tilesProvider = this;
-    this.setTopTilesProvider(this);
-
-    this.tileSourceManager = new TileSourceManager(this.options);
-    var eventManager = this._getEventManager();
-    Commons.addEventTracing(this, [ 'invalidate', 'loadTile', 'loadInfo' ],
-            eventManager);
-}
-_.extend(ProjectBasedTilesProvider.prototype, TilesProvider.prototype, {
-
-    setTopTilesProvider : function(provider) {
-        this.options.topProvider = provider;
-    },
-    getTopTilesProvider : function(provider) {
-        return this.options.topProvider || this;
-    },
-
-    invalidate : function(params) {
-        return this.tileSourceManager.clearTileSourceProvider(params);
     },
 
     _readTile : function(tileSource, params) {
@@ -193,36 +153,6 @@ _.extend(ProjectBasedTilesProvider.prototype, TilesProvider.prototype, {
         return deferred.promise;
     },
 
-    loadTile : function(params) {
-        var that = this;
-        return that._loadTileSource(params).then(function(tileSource) {
-            return that._readTile(tileSource, params);
-        }).then(function(result) {
-            return result;
-        });
-    },
-    loadInfo : function(params) {
-        var that = this;
-        return that._loadTileSource(params).then(function(tileSource) {
-            return P.ninvoke(tileSource, 'getInfo');
-        });
-    },
-    _loadTileSource : function(params) {
-        var that = this;
-        return that.tileSourceManager.loadTileSourceProvider(params).then(
-                function(provider) {
-                    return provider.prepareTileSource(params);
-                });
-    },
-    getFormats : function(params) {
-        var result = [ 'grid.json', 'png', 'vtile' ];
-        if (params && _.isArray(params.formats)) {
-            result = _.filter(result, function(format) {
-                return _.contains(params.formats, format);
-            })
-        }
-        return P(result);
-    },
 })
 
 function MemCache(options) {
@@ -258,7 +188,5 @@ _.extend(MemCache.prototype, {
 
 module.exports = {
     TilesProvider : TilesProvider,
-    CachingTilesProvider : CachingTilesProvider,
-    ProjectBasedTilesProvider : ProjectBasedTilesProvider,
     MemCache : MemCache
 }
