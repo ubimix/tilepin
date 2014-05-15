@@ -24,23 +24,36 @@ _.each(extensions, function(extension) {
     (require(extension)).registerProtocols(Tilelive);
 });
 
-var TileMillProjectLoader = require('./tilepin-loader');
+var ProjectLoader = require('./tilepin-loader');
 
-function TileSourceWrapper(options) {
+/* -------------------------------------------------------------------------- */
+/**
+ * Objects of this type provide access to individual projects and they are used
+ * to generate TileSource instances using dynamic parameters.
+ */
+function TileSourceProvider(options) {
     var that = this;
     that.options = options;
-    that._tileSource = null;
-    that._uri = that.options.uri;
     that._promises = that._newCache(that._getMaxTimeout());
 }
-_.extend(TileSourceWrapper.prototype, {
+_.extend(TileSourceProvider.prototype, {
 
     prepareTileSource : function(params) {
         var that = this;
         var id = that._getId(params);
         var promise = that._promises.get(id);
         if (!promise) {
-            promise = that._doLoadTileSource(params).fail(function(err) {
+            promise = that._generateTileliveUri(params) // 
+            .then(function(uri) {
+                return that._loadTileliveSourceUri(uri, params);
+            }) // 
+            .then(function(uri) {
+                return P.ninvoke(Tilelive, 'load', uri);
+            }) //
+            .then(function(tileSource) {
+                return that._wrapTileSource(tileSource, params);
+            }) // 
+            .fail(function(err) {
                 that._promises.del(id);
                 throw err;
             });
@@ -49,22 +62,124 @@ _.extend(TileSourceWrapper.prototype, {
         return promise;
     },
 
-    close : function() {
+    close : function(params) {
         this._reset();
     },
 
+    _getProcessedConfig : function(params) {
+        return this.options.config;
+    },
+
+    _isRemoteSource : function(params) {
+        var source = this._getSourceKey(params);
+        return source.indexOf(':') > 0;
+    },
+
+    _isVectorSourceType : function(params) {
+        var format = params.format || 'png';
+        return format == 'vtile' || format == 'pbf'
+    },
+
+    _generateTileliveUri : function(params) {
+        var that = this;
+        var file = that.options.pathname;
+        var dir = Path.dirname(file);
+        return P().then(function() {
+            return that._getProcessedConfig(params);
+        }).then(function(config) {
+            var renderer = new Carto.Renderer({
+                filename : file,
+                local_data_dir : dir,
+            });
+            return P.ninvoke(renderer, 'render', config) // 
+            .then(function(xml) {
+                return {
+                    base : dir,
+                    pathname : file,
+                    path : file,
+                    protocol : 'mapnik:',
+                    xml : xml,
+                    properties : config.properties || {}
+                };
+            })
+        });
+    },
+
+    _loadTileliveSourceUri : function(uri, params) {
+        var that = this;
+        return P().then(
+                function() {
+                    if (that._isVectorSourceType(params)
+                            && !that._isRemoteSource(params)) {
+                        // Generate vector tiles using existing tilemill
+                        // projects
+                        uri = _.extend({}, uri, {
+                            protocol : 'bridge:'
+                        });
+                        return uri;
+                    } else {
+                        // Generate image from vector tile sources
+                        var vectorTilesParams = that._getVectorTilesParams(
+                                params, uri);
+                        if (!vectorTilesParams)
+                            return uri;
+                        var manager = that.options.sourceManager;
+                        return manager
+                                .loadTileSourceProvider(vectorTilesParams) // 
+                                .then(function(vtileSource) {
+                                    uri = _.extend({}, uri, {
+                                        protocol : 'vector:',
+                                        source : {
+                                            protocol : 'tilepin:',
+                                            source : vtileSource
+                                        }
+                                    });
+                                    // uri.xml = that
+                                    // ._replaceVtilesProjection(uri.xml);
+                                    return uri;
+                                });
+                    }
+                });
+    },
+
+    _getVectorTilesParams : function(params, uri) {
+        var properties = uri.properties || {};
+        var result = null;
+        var source = this._getSourceKey(properties);
+        if (source == '') {
+            source = (properties.useVectorTiles ? this._getSourceKey(params)
+                    : null);
+        }
+        if (source && source != '') {
+            result = _.extend({}, params, {
+                source : source,
+                format : 'vtile'
+            });
+        }
+        return result;
+    },
+
+    _getSourceKey : function(params) {
+        return params.source || '';
+    },
+
     _closeTileSource : function(promise) {
+        var that = this;
         return promise.then(function(tileSource) {
+            var eventManager = that._getEventManager();
+            if (eventManager) {
+                eventManager.fire('TileSourceProvider:clearTileSource', {
+                    eventName : 'TileSourceProvider:clearTileSource',
+                    tileSource : tileSource,
+                    provider : that
+                });
+            }
             console.log('Destroying the tileSource: ', tileSource);
         })
     },
 
     _getId : function(params) {
-        var uri = this._uri
         var id = '';
-        if (uri.handler && _.isFunction(uri.handler.getId)) {
-            id = uri.handler.getId(params, uri);
-        }
         return id;
     },
 
@@ -99,52 +214,50 @@ _.extend(TileSourceWrapper.prototype, {
         that._tileSource = null;
     },
 
-    _doLoadTileSource : function(params) {
+    _wrapTileSource : function(tileSource, params) {
         var that = this;
-        return that._prepareUri(params).then(function(uri) {
-            return P.ninvoke(Tilelive, 'load', uri);
-        }).then(
-                function(tileSource) {
-                    var eventManager = that._getEventManager();
-                    if (eventManager) {
-                        var methods = _.map(
-                                [ 'getTile', 'getGrid', 'getInfo' ], function(
-                                        name) {
-                                    return {
-                                        eventName : name,
-                                        methodName : name,
-                                        params : params
-                                    }
-                                });
-                        return Commons.addEventTracingWithCallbacks(tileSource,
-                                methods, eventManager);
-                    } else {
-                        return tileSource;
-                    }
-                })
-        return promise;
+        var eventManager = that._getEventManager();
+        if (eventManager) {
+            var methods = _.map([ 'getTile', 'getGrid', 'getInfo' ], function(
+                    name) {
+                return {
+                    eventName : name,
+                    methodName : name,
+                    params : params
+                }
+            });
+            return Commons.addEventTracingWithCallbacks(tileSource, methods,
+                    eventManager);
+        } else {
+            return tileSource;
+        }
     },
 
     _getEventManager : function() {
-        return this.options.tilesProvider ? this.options.tilesProvider
-                ._getEventManager() : null;
+        return this.options.eventManager;
     }
 
 })
+/* -------------------------------------------------------------------------- */
 
 // Register a fake protocol allowing to return the control to the renderer
 Tilelive.protocols['tilepin:'] = function(options, callback) {
     callback(null, options.source);
 };
 
-function TileSourceProvider() {
+/* -------------------------------------------------------------------------- */
+/**
+ * TileSourceManagers are used to manage multiple TileSourceProviders - one
+ * provider by project. This object keeps providers in the internal cache.
+ */
+function TileSourceManager() {
     if (_.isFunction(this.initialize)) {
         this.initialize.apply(this, arguments);
     }
 }
-_.extend(TileSourceProvider.prototype, Commons.Events, {
+_.extend(TileSourceManager.prototype, Commons.Events, {
 
-    type : 'TileSourceProvider',
+    type : 'TileSourceManager',
 
     initialize : function(options) {
         this.options = options || {};
@@ -152,34 +265,34 @@ _.extend(TileSourceProvider.prototype, Commons.Events, {
             maxAge : this._getTileSourceCacheTTL()
         });
         this.projectLoader = this.options.projectLoader
-                || new TileMillProjectLoader(this.options);
+                || new ProjectLoader(this.options);
         var eventManager = this._getEventManager();
-        Commons.addEventTracing(this, [ 'loadTileSource', 'clearTileSource' ],
-                eventManager);
+        Commons.addEventTracing(this, [ 'loadTileSourceProvider',
+                'clearTileSourceProvider' ], eventManager);
     },
 
     /* ------------------------------ */
     // Methods to re-define in sub-classes.
     /** Loads and returns a promise for a tile source */
-    loadTileSource : function(params) {
+    loadTileSourceProvider : function(params) {
         var that = this;
         var eventManager = that._getEventManager();
         return P().then(function() {
             var format = that._getTileFormat(params);
             var cacheKey = that._getCacheKey(params, format);
-            var wrapper = that.sourceCache.get(cacheKey);
-            if (wrapper) {
-                eventManager.fire('loadTileSource:loadFromCache', {
-                    eventName : 'loadTileSource:loadFromCache',
+            var provider = that.sourceCache.get(cacheKey);
+            if (provider) {
+                eventManager.fire('loadTileSourceProvider:loadFromCache', {
+                    eventName : 'loadTileSourceProvider:loadFromCache',
                     arguments : [ params ],
                     format : format,
-                    wrapper : wrapper
+                    provider : provider
                 });
-                return wrapper;
+                return provider;
             }
 
-            eventManager.fire('loadTileSource:missedInCache', {
-                eventName : 'loadTileSource:missedInCache',
+            eventManager.fire('loadTileSourceProvider:missedInCache', {
+                eventName : 'loadTileSourceProvider:missedInCache',
                 format : format,
                 arguments : [ params ]
             });
@@ -189,73 +302,68 @@ _.extend(TileSourceProvider.prototype, Commons.Events, {
             var promise = index[promiseKey];
             if (!promise) {
                 promise = index[promiseKey] = P().then(function() {
-                    return that._loadTileliveSourceUri(params);
-                }).then(function(uri) {
-                    return that._wrapTileSource(uri, params);
+                    return that._loadProjectConfig(params);
+                }).then(function(config) {
+                    return that._newTileSourceProvider(config, params);
                 }).fin(function() {
                     delete index[promiseKey];
                 });
             }
-            return promise.then(function(wrapper) {
-                eventManager.fire('loadTileSource:setInCache', {
-                    eventName : 'loadTileSource:setInCache',
+            return promise.then(function(provider) {
+                eventManager.fire('loadTileSourceProvider:setInCache', {
+                    eventName : 'loadTileSourceProvider:setInCache',
                     arguments : [ params ],
                     format : format,
-                    wrapper : wrapper
+                    provider : provider
                 });
-                that.sourceCache.set(cacheKey, wrapper);
-                return wrapper;
+                that.sourceCache.set(cacheKey, provider);
+                return provider;
             });
-        }).then(function(wrapper) {
-            return wrapper.prepareTileSource(params);
         });
     },
 
     /** Cleans up a tile source corresponding to the specified parameters */
-    clearTileSource : function(params) {
+    clearTileSourceProvider : function(params) {
         var that = this;
         return P().then(function() {
             var formats = that._getTileFormats(params);
             var promises = _.map(formats, function(format) {
                 return P().then(function() {
                     var cacheKey = that._getCacheKey(params, format);
-                    var wrapper = that.sourceCache.get(cacheKey);
-                    if (!wrapper) {
+                    var provider = that.sourceCache.get(cacheKey);
+                    if (!provider) {
                         return;
                     }
                     var eventManager = that._getEventManager();
-                    var eventName = 'clearTileSource:clearCache';
+                    var eventName = 'clearTileSourceProvider:clearCache';
                     eventManager.fire(eventName, {
                         eventName : eventName,
                         arguments : [ params ],
                         format : format,
-                        wrapper : wrapper
+                        provider : provider
                     });
                     that.sourceCache.del(cacheKey);
-                    return wrapper.close();
+                    return provider.close(params);
                 })
             })
             return P.all(promises).then(function() {
-                return that.projectLoader.clearProject(params);
+                var sourceKey = that._getSourceKey(params);
+                var projectDir = that._getProjectDir(sourceKey);
+                return that.projectLoader.clearProjectConfig(projectDir);
             });
         });
     },
 
-    /* ------------------------------ */
-
-    isVectorSourceType : function(params) {
-        var format = this._getTileFormat(params);
-        return format == 'vtile' || format == 'pbf'
-    },
-
-    _getTileFormat : function(params) {
-        return params.format || 'png';
-    },
+    /* ---------------------------------------------------------------------- */
 
     _getTileFormats : function() {
         // TODO: check that it is all possible formats
         var formats = [ 'png', 'pbf', 'vtile', 'grid.json' ];
         return formats;
+    },
+
+    _getTileFormat : function(params) {
+        return params.format || 'png';
     },
 
     _getSourceKey : function(params) {
@@ -281,108 +389,32 @@ _.extend(TileSourceProvider.prototype, Commons.Events, {
         return this.options.tileSourceCacheTTL || 60 * 60 * 1000;
     },
 
-    /**
-     * Returns the toplevel tilesource provider. By default this method returns
-     * this object.
-     */
-    getTileSourceProvider : function() {
-        return this.options.tileSourceProvider || this;
-    },
-
-    /**
-     * Sets a new underlying tilesource provider returning tilesources to cache.
-     */
-    setTileSourceProvider : function(provider) {
-        this.options.tileSourceProvider = provider;
-    },
-
-    _newTileliveSource : function(params) {
+    _loadProjectConfig : function(params) {
         var that = this;
-        return that._loadTileliveSourceUri(params).then(function(uri) {
-            return P.ninvoke(Tilelive, 'load', uri);
-        });
+        var sourceKey = that._getSourceKey(params);
+        var projectDir = that._getProjectDir(sourceKey);
+        return that.projectLoader.loadProjectConfig(projectDir);
     },
 
-    _loadTileliveSourceUri : function(params) {
+    _getProjectDir : function(sourceKey) {
+        var dir = this.options.dir || this.options.styleDir || __dirname;
+        dir = Path.join(dir, sourceKey);
+        dir = Path.resolve(dir);
+        return dir;
+    },
+
+    _newTileSourceProvider : function(config, params) {
         var that = this;
-        return that.projectLoader.loadProject(params) // 
-        .then(
-                function(uri) {
-                    if (that.isVectorSourceType(params)
-                            && !that._isRemoteSource(params)) {
-                        // Generate vector tiles using existing tilemill
-                        // projects
-                        uri = _.extend({}, uri, {
-                            protocol : 'bridge:'
-                        });
-                        return uri;
-                    } else {
-                        // Generate image from vector tile sources
-                        var vectorTilesParams = that._getVectorTilesParams(
-                                params, uri);
-                        if (!vectorTilesParams)
-                            return uri;
-                        var provider = that.getTileSourceProvider(params);
-                        return provider.loadTileSource(vectorTilesParams) // 
-                        .then(function(vtileSource) {
-                            uri = _.extend({}, uri, {
-                                protocol : 'vector:',
-                                source : {
-                                    protocol : 'tilepin:',
-                                    source : vtileSource
-                                }
-                            });
-                            // uri.xml = that
-                            // ._replaceVtilesProjection(uri.xml);
-                            return uri;
-                        });
-                    }
-                });
-    },
-
-    _isRemoteSource : function(params) {
-        var source = this._getSourceKey(params);
-        return source.indexOf(':') > 0;
-    },
-
-    _getVectorTilesParams : function(params, uri) {
-        var properties = uri.properties || {};
-        var result = null;
-        var source = this._getSourceKey(properties);
-        if (source == '') {
-            source = (properties.useVectorTiles ? this._getSourceKey(params)
-                    : null);
-        }
-        if (source && source != '') {
-            result = _.extend({}, params, {
-                source : source,
-                format : 'vtile'
-            });
-        }
-        return result;
-    },
-
-    // _replaceVtilesProjection : function(str) {
-    // if (!str)
-    // return str;
-    // // Replace all SRS references by the Google SRS (900913)
-    // return str.replace(/srs=".*?"/gim, function(match) {
-    // return 'srs="+proj=merc ' + '+a=6378137 +b=6378137 '
-    // + '+lat_ts=0.0 +lon_0=0.0 ' + '+x_0=0.0 +y_0=0.0 +k=1.0 '
-    // + '+units=m +nadgrids=@null ' + '+wktext +no_defs +over"';
-    // });
-    // },
-
-    /* ---------------------------------------------------------------------- */
-    // Handling tile source wrappers (creating / initialisation / destruction)
-    _wrapTileSource : function(uri, params) {
-        return new TileSourceWrapper({
-            uri : uri,
-            params : params,
-            tilesProvider : this,
-        });
+        var sourceKey = that._getSourceKey(params);
+        var projectDir = that._getProjectDir(sourceKey);
+        return new TileSourceProvider(_.extend({
+            sourceKey : sourceKey,
+            projectDir : projectDir,
+            eventManager : that._getEventManager(),
+            sourceManager : that
+        }, config));
     },
 
 });
 
-module.exports = TileSourceProvider;
+module.exports = TileSourceManager;

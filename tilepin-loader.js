@@ -17,127 +17,49 @@ var LRU = require('lru-cache');
 var Commons = require('./tilepin-commons');
 var P = Commons.P;
 
-module.exports = TileMillProjectLoader;
+module.exports = ProjectLoader;
 
 /* -------------------------------------------------------------------------- */
 /**
  * 
  */
-function TileMillProjectLoader(options) {
+function ProjectLoader(options) {
     this.options = options || {};
     if (!this.options.dir) {
         this.options.dir = './';
     }
-    Commons.addEventTracing(this, [ 'clearProject', 'loadProject' ]);
+    this._promises = {};
+    Commons
+            .addEventTracing(this,
+                    [ 'clearProjectConfig', 'loadProjectConfig' ]);
 }
 
-function deleteFile(file) {
-    if (!FS.existsSync(file))
-        return P(true);
-    return P.nfcall(FS.unlink, file).then(function() {
-        return true;
-    }, function(err) {
-        // File does not exist anymore.
-        if (err.code == 'ENOENT')
-            return true;
-        throw err;
-    });
-}
+_.extend(ProjectLoader.prototype, Commons.Events, {
 
-_.extend(TileMillProjectLoader.prototype, Commons.Events, {
-
-    clearProject : function(params) {
+    clearProjectConfig : function(projectDir) {
         var that = this;
-        return P().then(function() {
-            var sourceKey = that._getSourceKey(params);
-            var files = [];
-            files.push(that._getTilepinProjectFile(sourceKey));
-            files.push(that._getTilepinPropertiesFile(sourceKey));
-            return P.all(_.map(files, function(file) {
-                return deleteFile(file);
-            }));
-        });
+        var promise = that._promises[projectDir];
+        delete that._promises[projectDir];
+        return promise;
     },
 
-    /**
-     * This method loads and returns an object containing tilesource XML and a
-     * base directory for this tilesource.
-     */
-    loadProject : function(params) {
+    loadProjectConfig : function(projectDir) {
         var that = this;
-        if (that._isRemoteProject(params)) {
-            return that._loadRemoteProject(params);
-        } else {
-            return that._loadLocalProject(params);
-        }
-    },
-
-    _getSourceKey : function(params) {
-        return params.source || '';
-    },
-
-    _isRemoteProject : function(params) {
-        var sourceKey = this._getSourceKey(params);
-        return sourceKey.indexOf(':') > 0;
-    },
-
-    _loadRemoteProject : function(params) {
-        var sourceKey = this._getSourceKey(params);
-        return P().then(function() {
-            var result = Url.parse(sourceKey);
-            return result;
-        });
-    },
-
-    _loadLocalProject : function(params) {
-        var files;
-        var that = this;
-        return P().then(function() {
-            return that._prepareProjectFiles(params);
-        }).then(
-                function(f) {
-                    files = f;
-                    return P.all([ Commons.IO.readString(files[0]),
-                            Commons.IO.readJson(files[1]) ]);
-                }).then(function(array) {
-            var xml = array[0];
-            var properties = array[1];
-            var handler = that._getUriHandler(properties, params);
-            return {
-                base : Path.dirname(files[0]),
-                pathname : files[0],
-                path : files[0],
-                properties : properties,
-                protocol : 'mapnik:',
-                xml : xml,
-                handler : handler
-            };
-        })
-    },
-
-    _getUriHandler : function(properties, params) {
-        var that = this;
-        var handler = undefined;
-        if (properties.dynamic) {
-            var sourceKey = that._getSourceKey(params);
-            var file = that._getTileSourceFile(sourceKey, properties.dynamic);
-            if (file) {
-                handler = Commons.IO.loadObject(file);
-            }
-        }
-        return handler;
-    },
-
-    _getTileSourceDir : function(sourceKey) {
-        var dir = this.options.dir || this.options.styleDir || __dirname;
-        dir = Path.join(dir, sourceKey);
-        dir = Path.resolve(dir);
-        return dir;
-    },
-    _getTileSourceFile : function(sourceKey, fileName) {
-        var dir = this._getTileSourceDir(sourceKey);
-        var fullPath = Path.join(dir, fileName);
-        return fullPath;
+        var promise = that._promises[projectDir];
+        if (promise)
+            return promise;
+        return that._promises[projectDir] = that._readProjectFile(projectDir)
+                .then(function(json) {
+                    var promises = [];
+                    var conf = json.config;
+                    promises.push(that._processDataSources(projectDir, conf));
+                    promises.push(that._loadProjectStyles(projectDir, conf));
+                    return P.all(promises).then(function() {
+                        return json;
+                    });
+                }).fin(function() {
+                    delete that._promises[projectDir];
+                });
     },
 
     _findDataIndex : function(dir, url) {
@@ -253,7 +175,8 @@ _.extend(TileMillProjectLoader.prototype, Commons.Events, {
 
     _unzip : function(zipFile, dataDir) {
         var zip = new AdmZip(zipFile);
-        var zipEntries = zip.getEntries(); // an array of ZipEntry records
+        var zipEntries = zip.getEntries(); // an array of
+        // ZipEntry records
         return P.all(_.map(zipEntries, function(zipEntry) {
             var file = Path.join(dataDir, zipEntry.entryName);
             zip.extractEntryTo(zipEntry.entryName, dataDir, true, true);
@@ -273,7 +196,7 @@ _.extend(TileMillProjectLoader.prototype, Commons.Events, {
                 return JSON.parse(str);
             },
         } ];
-        return function(dir, params) {
+        return function(dir) {
             return P().then(function() {
                 var fileInfo = null;
                 var file = null;
@@ -295,113 +218,94 @@ _.extend(TileMillProjectLoader.prototype, Commons.Events, {
                 }
                 return Commons.IO.readString(file).then(function(data) {
                     var obj = fileInfo.parse(data);
-                    if (params.dumpConfigAsYaml) {
-                        console.log(Yaml.dump(obj));
-                    } else if (params.dumpConfigAsJSON) {
-                        console.log(JSON.stringify(obj, null, 2));
+                    return {
+                        pathname : file,
+                        config : obj
                     }
-                    return obj;
                 });
             });
         }
     })(),
 
-    _generateMapnikXml : function(xmlFile, json) {
-        var xmlDir = Path.dirname(xmlFile);
-        var renderer = new Carto.Renderer({
-            filename : xmlFile,
-            local_data_dir : xmlDir,
-        });
-        return P.ninvoke(renderer, 'render', json);
-    },
+    _processDataSources : function(projectDir, config) {
+        var that = this
+        var options = that.options;
+        var f = options['handleDatalayer'];
+        f = _.isFunction(f) ? f : undefined;
+        return P.all(_.map(config.Layer, function(dataLayer) {
+            if (!dataLayer.Datasource)
+                return;
+            var result;
+            switch (dataLayer.Datasource.type) {
+            case 'postgis':
+                result = prepareDbSource(dataLayer);
+                break;
+            default:
+                var url = dataLayer.Datasource.file;
+                if (url) {
+                    result = prepareFileSource(dataLayer);
+                }
+                break;
+            }
+            if (!result) {
+                result = P();
+            }
+            return result.then(function() {
+                return f ? f.call(options, {
+                    projectDir : projectDir,
+                    config : config,
+                    dataLayer : dataLayer
+                }) : undefined;
+            });
 
-    _prepareProjectConfiguration : function(projectDir, params) {
-        var that = this;
-        return that._readProjectFile(projectDir, params).then(function(json) {
-            return P.all([ processDataSources(json), loadProjectStyles(json) ])
-            //
-            .then(function() {
-                return json;
-            });
-        });
-        function processDataSources(styleJSON) {
-            var options = that.options;
-            var f = options['handleDatalayer'];
-            f = _.isFunction(f) ? f : undefined;
-            return P.all(_.map(styleJSON.Layer, function(dataLayer) {
-                if (!dataLayer.Datasource)
-                    return;
-                var result;
-                switch (dataLayer.Datasource.type) {
-                case 'postgis':
-                    result = prepareDbSource(dataLayer);
-                    break;
-                default:
-                    var url = dataLayer.Datasource.file;
-                    if (url) {
-                        result = prepareFileSource(dataLayer);
-                    }
-                    break;
-                }
-                if (!result) {
-                    result = P();
-                }
-                return result.then(function() {
-                    return f ? f.call(options, {
-                        projectDir : projectDir,
-                        params : params,
-                        dataLayer : dataLayer
-                    }) : undefined;
-                });
-            }))
-        }
-        function loadProjectStyles(styleJSON) {
-            return P.all(_.map(styleJSON.Stylesheet, function(stylesheet) {
-                return that._loadProjectStyle(projectDir, stylesheet);
-            })).then(function(styles) {
-                styleJSON.Stylesheet = styles;
-                return styleJSON;
-            });
-        }
-        function prepareDbSource(dataLayer) {
-            return P() //
-            .then(function() {
-                var file = dataLayer.Datasource.file;
-                var table = dataLayer.Datasource.table;
-                if (file && !table) {
-                    file = Path.join(projectDir, file);
-                    return Commons.IO.readString(file).then(function(content) {
-                        delete dataLayer.Datasource.file;
-                        dataLayer.Datasource.table = '(' // 
-                                + content + ') as data';
+            function prepareDbSource(dataLayer) {
+                return P().then(
+                        function() {
+                            var file = dataLayer.Datasource.file;
+                            var table = dataLayer.Datasource.table;
+                            if (file && !table) {
+                                file = Path.join(projectDir, file);
+                                return Commons.IO.readString(file).then(
+                                        function(content) {
+                                            delete dataLayer.Datasource.file;
+                                            dataLayer.Datasource.table = '(' // 
+                                                    + content + ') as data';
+                                        });
+                            }
+                        });
+            }
+            function prepareFileSource(dataLayer) {
+                var url = dataLayer.Datasource.file;
+                var promise = P();
+                if (url && url.match(/^https?:\/\/.*$/gim)) {
+                    var layersDir = Path.join(projectDir, 'data');
+                    promise = that._downloadAndUnzip(url, layersDir).then(
+                            function(dataDir) {
+                                return that._findDataIndex(dataDir, url);
+                            }).then(function(filePath) {
+                        dataLayer.Datasource.file = filePath;
+                        dataLayer.Datasource.type = 'shape';
                     });
                 }
-            });
-        }
-        function prepareFileSource(dataLayer) {
-            var url = dataLayer.Datasource.file;
-            var promise = P();
-            if (url && url.match(/^https?:\/\/.*$/gim)) {
-                var layersDir = Path.join(projectDir, 'layers');
-                promise = that._downloadAndUnzip(url, layersDir).then(
-                        function(dataDir) {
-                            return that._findDataIndex(dataDir, url);
-                        }).then(function(filePath) {
-                    dataLayer.Datasource.file = filePath;
-                    dataLayer.Datasource.type = 'shape';
+                return promise.then(function(result) {
+                    if (dataLayer.Datasource.file) {
+                        dataLayer.Datasource.file = Path.resolve(projectDir,
+                                dataLayer.Datasource.file);
+                    }
+                    return result;
                 });
             }
-            return promise.then(function(result) {
-                if (dataLayer.Datasource.file) {
-                    dataLayer.Datasource.file = Path.resolve(projectDir,
-                            dataLayer.Datasource.file);
-                }
-                return result;
-            });
-        }
-
+        }))
     },
-
+    _loadProjectStyles : function(projectDir, config) {
+        var that = this;
+        return P.all(_.map(config.Stylesheet, function(stylesheet) {
+            return that._loadProjectStyle(projectDir, stylesheet);
+        })).then(function(styles) {
+            config.Stylesheet = styles;
+            return config;
+        });
+    },
     _loadProjectStyle : function(dir, stylesheet) {
         var promise = P();
         var id;
@@ -435,63 +339,6 @@ _.extend(TileMillProjectLoader.prototype, Commons.Events, {
                 data : css
             };
         })
-    },
-
-    _getTilepinProjectFile : function(sourceKey) {
-        var fileName = 'project.tilepin.xml';
-        return this._getTileSourceFile(sourceKey, fileName);
-    },
-    _getTilepinPropertiesFile : function(sourceKey) {
-        var fileName = 'project.tilepin.properties';
-        return this._getTileSourceFile(sourceKey, fileName);
-    },
-
-    _prepareProjectFiles : function(params) {
-        var that = this;
-        var sourceKey = that._getSourceKey(params);
-        var xmlTilepinFile = that._getTilepinProjectFile(sourceKey);
-        var propertiesTilepinFile = that._getTilepinPropertiesFile(sourceKey);
-        return P.all([ checkXmlFile(), checkPropertiesFile() ]).then(
-                function(files) {
-                    if (files[0] && files[1]) {
-                        return files;
-                    }
-                    that._loadingStyles = that._loadingStyles || {};
-                    var promise = that._loadingStyles[sourceKey];
-                    if (!promise) {
-                        var projectDir = that._getTileSourceDir(sourceKey);
-                        promise = that._loadingStyles[sourceKey] = that
-                                ._prepareProjectConfiguration(projectDir,
-                                        params).then(function(json) {
-                                    var promises = [];
-                                    promises.push(writeXmlFile(json));
-                                    promises.push(writePropertiesFile(json));
-                                    return P.all(promises);
-                                }).fin(function() {
-                                    delete that._loadingStyles[sourceKey];
-                                });
-                    }
-                    return promise.then(function() {
-                        return [ xmlTilepinFile, propertiesTilepinFile ];
-                    });
-                });
-        function checkXmlFile() {
-            var xmlFile = that._getTileSourceFile(sourceKey, 'project.xml');
-            return Commons.IO.findExistingFile([ xmlFile, xmlTilepinFile ]);
-        }
-        function writeXmlFile(json) {
-            return that._generateMapnikXml(xmlTilepinFile, json).then(
-                    function(xml) {
-                        return Commons.IO.writeString(xmlTilepinFile, xml);
-                    });
-        }
-        function checkPropertiesFile() {
-            return Commons.IO.findExistingFile(propertiesTilepinFile);
-        }
-        function writePropertiesFile(json) {
-            return Commons.IO.writeJson(propertiesTilepinFile, // 
-            json.properties);
-        }
     },
 
 });

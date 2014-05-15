@@ -8,7 +8,7 @@ var Commons = require('./tilepin-commons');
 var P = Commons.P;
 
 var LRU = require('lru-cache');
-var TileSourceProvider = require('./tilepin-provider');
+var TileSourceManager = require('./tilepin-provider');
 
 function TilesProvider(options) {
     this.options = options || {};
@@ -43,68 +43,6 @@ _.extend(TilesProvider.prototype, Commons.Events, {
     _getEventManager : function() {
         var eventManager = this.options.eventManager || this;
         return eventManager;
-    }
-})
-
-/** Transforms a TilesProvider into a TileSourceProvider instance */
-function TileSourceProviderWrapper(options) {
-    this.options = options;
-}
-_.extend(TileSourceProviderWrapper.prototype, {
-    getTilesProvider : function() {
-        return this.options.tilesProvider;
-    },
-    setTilesProvider : function(provider) {
-        this.options.tilesProvider = provider;
-    },
-    /**
-     * Returns a Tilesource corresponding to the specified parameters (see
-     * Tilelive)
-     */
-    loadTileSource : function(params) {
-        var that = this;
-        return P({
-            getTile : function(z, x, y, callback) {
-                var provider = that.getTilesProvider();
-                provider.loadTile({
-                    source : params.source,
-                    x : x,
-                    y : y,
-                    z : z,
-                    format : params.format
-                }).then(function(result) {
-                    callback(null, result.tile, result.headers);
-                }, function(err) {
-                    callback(err);
-                }).done();
-            },
-            getGrid : function(z, x, y, callback) {
-                var provider = that.getTilesProvider();
-                provider.loadTile({
-                    source : params.source,
-                    x : x,
-                    y : y,
-                    z : z,
-                    format : 'grid.json'
-                }).then(function(result) {
-                    callback(null, result.tile, result.headers);
-                }, function(err) {
-                    callback(err);
-                }).done();
-            },
-            getInfo : function(callback) {
-                var provider = that.getTilesProvider();
-                provider.loadInfo(params).then(function(result) {
-                    callback(null, result);
-                }, function(err) {
-                    callback(err);
-                }).done();
-            }
-        });
-    },
-    clearTileSource : function(params) {
-        var provider = this.getTilesProvider();
-        return provider.invalidate(params);
     }
 })
 
@@ -210,14 +148,10 @@ _.extend(CachingTilesProvider.prototype, TilesProvider.prototype, {
 
 function ProjectBasedTilesProvider(options) {
     this.options = options || {};
-    this.wrapper = new TileSourceProviderWrapper(options);
-    this.options.tileSourceProvider = this.wrapper;
-    // It will be overloaded by the "setTopTilesProvider" and
-    // this.wrapper.setTilesProvider(provider) methods calls.
     this.options.tilesProvider = this;
     this.setTopTilesProvider(this);
 
-    this.tileSourceProvider = new TileSourceProvider(this.options);
+    this.tileSourceManager = new TileSourceManager(this.options);
     var eventManager = this._getEventManager();
     Commons.addEventTracing(this, [ 'invalidate', 'loadTile', 'loadInfo' ],
             eventManager);
@@ -226,14 +160,13 @@ _.extend(ProjectBasedTilesProvider.prototype, TilesProvider.prototype, {
 
     setTopTilesProvider : function(provider) {
         this.options.topProvider = provider;
-        this.wrapper.setTilesProvider(provider);
     },
     getTopTilesProvider : function(provider) {
         return this.options.topProvider || this;
     },
 
     invalidate : function(params) {
-        return this.tileSourceProvider.clearTileSource(params);
+        return this.tileSourceManager.clearTileSourceProvider(params);
     },
 
     _readTile : function(tileSource, params) {
@@ -262,8 +195,7 @@ _.extend(ProjectBasedTilesProvider.prototype, TilesProvider.prototype, {
 
     loadTile : function(params) {
         var that = this;
-        return that.tileSourceProvider.loadTileSource(params) //
-        .then(function(tileSource) {
+        return that._loadTileSource(params).then(function(tileSource) {
             return that._readTile(tileSource, params);
         }).then(function(result) {
             return result;
@@ -271,9 +203,15 @@ _.extend(ProjectBasedTilesProvider.prototype, TilesProvider.prototype, {
     },
     loadInfo : function(params) {
         var that = this;
-        return that.tileSourceProvider.loadTileSource(params).then(
-                function(tileSource) {
-                    return P.ninvoke(tileSource, 'getInfo');
+        return that._loadTileSource(params).then(function(tileSource) {
+            return P.ninvoke(tileSource, 'getInfo');
+        });
+    },
+    _loadTileSource : function(params) {
+        var that = this;
+        return that.tileSourceManager.loadTileSourceProvider(params).then(
+                function(provider) {
+                    return provider.prepareTileSource(params);
                 });
     },
     getFormats : function(params) {
@@ -322,6 +260,5 @@ module.exports = {
     TilesProvider : TilesProvider,
     CachingTilesProvider : CachingTilesProvider,
     ProjectBasedTilesProvider : ProjectBasedTilesProvider,
-    TileSourceProviderWrapper : TileSourceProviderWrapper,
     MemCache : MemCache
 }

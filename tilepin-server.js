@@ -30,6 +30,8 @@ var projectLoader = new TileMillProjectLoader({
             if (_.isFunction(db)) {
                 db.call(config, options);
             } else {
+                var projectConf = options.config;
+                console.log(options);
                 var sourceKey = options.params.source;
                 var dbParams = db[sourceKey];
                 _.extend(dataLayer.Datasource, dbParams);

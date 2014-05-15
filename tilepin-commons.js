@@ -104,7 +104,21 @@ var IO = {
         json = json || {};
         var str = JSON.stringify(json);
         return IO.writeString(file, str);
+    },
+
+    deleteFile : function(file) {
+        if (!FS.existsSync(file))
+            return P(true);
+        return P.nfcall(FS.unlink, file).then(function() {
+            return true;
+        }, function(err) {
+            // File does not exist anymore.
+            if (err.code == 'ENOENT')
+                return true;
+            throw err;
+        });
     }
+
 }
 
 module.exports = {
