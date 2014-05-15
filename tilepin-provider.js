@@ -62,14 +62,61 @@ _.extend(TileSourceProvider.prototype, {
         return promise;
     },
 
+    isDynamicSource : function(params) {
+        var result = false;
+        if (!!this.options.config.dynamic) {
+            result = true;
+        }
+        return result;
+    },
+
     getCacheId : function(params) {
-        var id = '';
-        // console.log(this.options.config);
+        var sourceKey = this.options.sourceKey;
+        var format = params.format || 'png';
+        var suffix = '';
+        if (this.isDynamicSource(params)) {
+            var script = this._getQueryScript();
+            if (script && _.isFunction(script.getId)) {
+                suffix = script.getId(params);
+            }
+        }
+        if (suffix && suffix != '') {
+            suffix = '-' + suffix;
+        }
+        var id = sourceKey + suffix + '-' + format;
         return id;
     },
 
     close : function(params) {
-        this._reset();
+        var that = this;
+        that._promises.reset();
+        that._unloadQueryScript();
+    },
+
+    _getQueryScriptPath : function() {
+        var config = this.options.config;
+        if (!config)
+            return undefined;
+        var scriptName = config.queryBuilder;
+        if (!scriptName)
+            return undefined;
+        var path = Path.join(this.options.projectDir, scriptName);
+        return path;
+    },
+
+    _unloadQueryScript : function() {
+        var path = this._getQueryScriptPath();
+        if (path) {
+            Commons.IO.clearObject(path);
+        }
+    },
+
+    _getQueryScript : function() {
+        var path = this._getQueryScriptPath();
+        if (!path)
+            return undefined;
+        var obj = Commons.IO.loadObject(path);
+        return obj;
     },
 
     _isRemoteSource : function(params) {
@@ -95,6 +142,7 @@ _.extend(TileSourceProvider.prototype, {
             });
             return P.ninvoke(renderer, 'render', config) // 
             .then(function(xml) {
+                console.log('>>>', xml);
                 return {
                     base : dir,
                     pathname : file,
@@ -109,22 +157,46 @@ _.extend(TileSourceProvider.prototype, {
 
     _getProcessedConfig : function(params) {
         var that = this;
-        var options = that.options;
+        if (!that._handlers) {
+            that._handlers = [];
+            var script = that._getQueryScript();
+            if (script && _.isFunction(script.prepareDatasource)) {
+                that._handlers.push(function(args) {
+                    return script.prepareDatasource(args);
+                })
+            }
+            var handler = that.options['handleDatalayer'];
+            if (_.isFunction(handler)) {
+                that._handlers.push(function(args) {
+                    return handler.call(that.options, args);
+                });
+            }
+        }
         // Deep copy of the config
+        var options = that.options;
         var config = JSON.parse(JSON.stringify(options.config));
-        var handler = options['handleDatalayer'];
-        if (_.isFunction(handler)) {
-            _.map(config.Layer, function(dataLayer) {
+        return P().then(function() {
+            if (!config.Layer || !config.Layer.length)
+                return;
+            if (!that._handlers.length)
+                return;
+            return P.all(_.map(config.Layer, function(dataLayer) {
                 if (!dataLayer.Datasource)
                     return;
-                handler.call(options, {
+                var args = {
                     config : config,
                     dataLayer : dataLayer,
                     params : params
-                });
-            })
-        }
-        return config;
+                };
+                if (that._handlers.length == 1)
+                    return that._handlers[0](args);
+                return P.all(_.map(that._handlers, function(handler) {
+                    return handler(args);
+                }));
+            }));
+        }).then(function() {
+            return config;
+        })
     },
 
     _loadTileliveSourceUri : function(uri, params) {
@@ -196,7 +268,9 @@ _.extend(TileSourceProvider.prototype, {
                     provider : that
                 });
             }
-            console.log('Destroying the tileSource: ', tileSource);
+            if (_.isFunction(tileSource.close)) {
+                return P.ninvoke(tileSource, 'close');
+            }
         })
     },
 
@@ -223,12 +297,6 @@ _.extend(TileSourceProvider.prototype, {
 
     _getMaxTimeout : function() {
         return 1000 * 60 * 60;
-    },
-
-    _reset : function() {
-        var that = this;
-        that._promises.reset();
-        that._tileSource = null;
     },
 
     _wrapTileSource : function(tileSource, params) {
