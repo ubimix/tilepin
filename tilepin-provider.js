@@ -40,10 +40,12 @@ _.extend(TileSourceProvider.prototype, {
 
     prepareTileSource : function(params) {
         var that = this;
-        var id = that.getCacheId(params);
+        var id = that._getCacheId(params);
+        // FIXME: add expiration of individual requests
         var promise = that._promises.get(id);
+        console.log(' * ', this.options.sourceKey, id, promise);
         if (!promise) {
-            promise = that._generateTileliveUri(params) // 
+            promise = that._generateTileliveUri(params, id) // 
             .then(function(uri) {
                 return that._loadTileliveSourceUri(uri, params);
             }) // 
@@ -70,9 +72,28 @@ _.extend(TileSourceProvider.prototype, {
         return result;
     },
 
-    getCacheId : function(params) {
+    getCacheKey : function(params, suffix) {
+        var that = this;
+        var x = +params.x;
+        var y = +params.y;
+        var zoom = +params.z;
+        var array = [];
+        _.each([ zoom, x, y ], function(n) {
+            if (!_.isNaN(n)) {
+                array.push(n);
+            }
+        })
+        var key = undefined;
+        if (array.length == 3 /* zoom, x, y */) {
+            key = that._getCacheId(params) + array.join('-');
+            if (suffix && suffix != '')
+                key += '-' + suffix;
+        }
+        return key;
+    },
+
+    _getCacheId : function(params) {
         var sourceKey = this.options.sourceKey;
-        var format = params.format || 'png';
         var suffix = '';
         if (this.isDynamicSource(params)) {
             var script = this._getQueryScript();
@@ -82,8 +103,12 @@ _.extend(TileSourceProvider.prototype, {
         }
         if (suffix && suffix != '') {
             suffix = '-' + suffix;
+        } else {
+            suffix = '';
         }
-        var id = sourceKey + suffix + '-' + format;
+        var type = this._isVectorSourceType(params) ? '-a' : '-b';
+        var id = sourceKey + type + suffix;
+        id = require('crypto').createHash('sha1').update(id).digest('hex')
         return id;
     },
 
@@ -129,23 +154,24 @@ _.extend(TileSourceProvider.prototype, {
         return format == 'vtile' || format == 'pbf'
     },
 
-    _generateTileliveUri : function(params) {
+    _generateTileliveUri : function(params, id) {
         var that = this;
         var file = that.options.pathname;
         var dir = Path.dirname(file);
+        var configFile = Path.join(dir, id);
         return P().then(function() {
             return that._getProcessedConfig(params);
         }).then(function(config) {
             var renderer = new Carto.Renderer({
-                filename : file,
+                filename : configFile,
                 local_data_dir : dir,
             });
             return P.ninvoke(renderer, 'render', config) // 
             .then(function(xml) {
                 return {
                     base : dir,
-                    pathname : file,
-                    path : file,
+                    pathname : configFile,
+                    path : configFile,
                     protocol : 'mapnik:',
                     xml : xml,
                     properties : config.properties || {}

@@ -22,21 +22,27 @@ _.extend(TilesProvider.prototype, Commons.Events, {
 
     invalidate : function(params) {
         var that = this;
-        return that._getFormats(params).then(function(formats) {
-            var sourceKey = that._getSourceKey(params);
-            var resetAll = true;
-            return P.all(_.map(formats, function(format) {
-                var cacheKey = that._getCacheKey(params, format);
-                if (cacheKey) {
-                    resetAll = false;
-                    return that.cache.reset(sourceKey, cacheKey);
-                }
-            })).then(function(result) {
-                if (resetAll) {
-                    return that.cache.reset(sourceKey);
-                }
-                return result;
-            })
+        return P().then(function() {
+            return that.tileSourceManager.loadTileSourceProvider(params) //
+            .then(function(provider) {
+                return that._getFormats(params).then(function(formats) {
+                    var sourceKey = that._getSourceKey(params);
+                    var resetAll = true;
+                    return P.all(_.map(formats, function(format) {
+                        var cacheKey = provider.getCacheKey(params, format);
+                        if (cacheKey) {
+                            resetAll = false;
+                            return that.cache.reset(sourceKey, cacheKey);
+                        }
+                    })).then(function(result) {
+                        if (resetAll) {
+                            return that.cache.reset(sourceKey);
+                        }
+                        return result;
+                    });
+                });
+
+            });
         }).then(function() {
             return that.tileSourceManager.clearTileSourceProvider(params);
         });
@@ -44,28 +50,43 @@ _.extend(TilesProvider.prototype, Commons.Events, {
 
     loadTile : function(params) {
         var that = this;
-        var sourceKey = that._getSourceKey(params);
-        var format = params.format;
-        var cacheKey = that._getCacheKey(params, format);
-        return that.cache.get(sourceKey, cacheKey).then(function(result) {
-            if (result && !that._forceTileInvalidation(params))
-                return result;
-            return that._loadTileSource(params).then(function(tileSource) {
+        function loadNonCached(provider, params) {
+            return provider.prepareTileSource(params) // 
+            .then(function(tileSource) {
                 return that._readTile(tileSource, params);
-            }).then(function(result) {
-                if (result.cache === false)
+            })
+        }
+        function loadCached(provider, params) {
+            var sourceKey = that._getSourceKey(params);
+            var format = params.format;
+            var cacheKey = provider.getCacheKey(params, format);
+            return that.cache.get(sourceKey, cacheKey).then(function(result) {
+                if (result && !that._forceTileInvalidation(params))
                     return result;
-                return that.cache.set(sourceKey, cacheKey, result) // 
-                .then(function() {
-                    return result;
+                return loadNonCached(provider, params).then(function(result) {
+                    return that.cache.set(sourceKey, cacheKey, result) // 
+                    .then(function() {
+                        return result;
+                    });
                 });
-            });
-        });
+            })
+        }
+        return that.tileSourceManager.loadTileSourceProvider(params).then(
+                function(provider) {
+                    if (!provider.isDynamicSource()) {
+                        return loadCached(provider, params);
+                    } else {
+                        return loadNonCached(provider, params);
+                    }
+                });
     },
 
     loadInfo : function(params) {
         var that = this;
-        return that._loadTileSource(params).then(function(tileSource) {
+        return that.tileSourceManager.loadTileSourceProvider(params) //
+        .then(function(provider) {
+            return provider.prepareTileSource(params);
+        }).then(function(tileSource) {
             return P.ninvoke(tileSource, 'getInfo');
         });
     },
@@ -91,34 +112,8 @@ _.extend(TilesProvider.prototype, Commons.Events, {
         var eventManager = this.options.eventManager || this;
         return eventManager;
     },
-    _loadTileSource : function(params) {
-        var that = this;
-        return that.tileSourceManager.loadTileSourceProvider(params).then(
-                function(provider) {
-                    return provider.prepareTileSource(params);
-                });
-    },
     _forceTileInvalidation : function(params) {
         return !!params.reload;
-    },
-    _getCacheKey : function(params, prefix) {
-        var x = +params.x;
-        var y = +params.y;
-        var zoom = +params.z;
-        var array = [];
-        _.each([ zoom, x, y ], function(n) {
-            if (!_.isNaN(n)) {
-                array.push(n);
-            }
-        })
-        var key = array.join('-');
-        if (array.length == 3 /* zoom, x, y */) {
-            if (prefix && prefix != '')
-                key = prefix + '-' + key;
-        } else {
-            key = undefined;
-        }
-        return key;
     },
     _readTile : function(tileSource, params) {
         var deferred = P.defer();
