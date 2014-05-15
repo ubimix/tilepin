@@ -40,7 +40,7 @@ _.extend(TileSourceProvider.prototype, {
 
     prepareTileSource : function(params) {
         var that = this;
-        var id = that._getId(params);
+        var id = that.getCacheId(params);
         var promise = that._promises.get(id);
         if (!promise) {
             promise = that._generateTileliveUri(params) // 
@@ -62,12 +62,14 @@ _.extend(TileSourceProvider.prototype, {
         return promise;
     },
 
-    close : function(params) {
-        this._reset();
+    getCacheId : function(params) {
+        var id = '';
+        // console.log(this.options.config);
+        return id;
     },
 
-    _getProcessedConfig : function(params) {
-        return this.options.config;
+    close : function(params) {
+        this._reset();
     },
 
     _isRemoteSource : function(params) {
@@ -105,6 +107,26 @@ _.extend(TileSourceProvider.prototype, {
         });
     },
 
+    _getProcessedConfig : function(params) {
+        var that = this;
+        var options = that.options;
+        // Deep copy of the config
+        var config = JSON.parse(JSON.stringify(options.config));
+        var handler = options['handleDatalayer'];
+        if (_.isFunction(handler)) {
+            _.map(config.Layer, function(dataLayer) {
+                if (!dataLayer.Datasource)
+                    return;
+                handler.call(options, {
+                    config : config,
+                    dataLayer : dataLayer,
+                    params : params
+                });
+            })
+        }
+        return config;
+    },
+
     _loadTileliveSourceUri : function(uri, params) {
         var that = this;
         return P().then(
@@ -124,20 +146,20 @@ _.extend(TileSourceProvider.prototype, {
                         if (!vectorTilesParams)
                             return uri;
                         var manager = that.options.sourceManager;
-                        return manager
-                                .loadTileSourceProvider(vectorTilesParams) // 
-                                .then(function(vtileSource) {
-                                    uri = _.extend({}, uri, {
-                                        protocol : 'vector:',
-                                        source : {
-                                            protocol : 'tilepin:',
-                                            source : vtileSource
-                                        }
-                                    });
-                                    // uri.xml = that
-                                    // ._replaceVtilesProjection(uri.xml);
-                                    return uri;
-                                });
+                        var prm = vectorTilesParams;
+                        return manager.loadTileSourceProvider(prm).then(
+                                function(provider) {
+                                    return provider.prepareTileSource(prm);
+                                }).then(function(vtileSource) {
+                            uri = _.extend({}, uri, {
+                                protocol : 'vector:',
+                                source : {
+                                    protocol : 'tilepin:',
+                                    source : vtileSource
+                                }
+                            });
+                            return uri;
+                        });
                     }
                 });
     },
@@ -176,11 +198,6 @@ _.extend(TileSourceProvider.prototype, {
             }
             console.log('Destroying the tileSource: ', tileSource);
         })
-    },
-
-    _getId : function(params) {
-        var id = '';
-        return id;
     },
 
     _prepareUri : function(params) {
@@ -403,16 +420,16 @@ _.extend(TileSourceManager.prototype, Commons.Events, {
         return dir;
     },
 
-    _newTileSourceProvider : function(config, params) {
+    _newTileSourceProvider : function(info, params) {
         var that = this;
         var sourceKey = that._getSourceKey(params);
         var projectDir = that._getProjectDir(sourceKey);
-        return new TileSourceProvider(_.extend({
+        return new TileSourceProvider(_.extend({}, that.options, {
             sourceKey : sourceKey,
             projectDir : projectDir,
             eventManager : that._getEventManager(),
             sourceManager : that
-        }, config));
+        }, info));
     },
 
 });

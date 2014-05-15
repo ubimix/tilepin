@@ -229,9 +229,6 @@ _.extend(ProjectLoader.prototype, Commons.Events, {
 
     _processDataSources : function(projectDir, config) {
         var that = this
-        var options = that.options;
-        var f = options['handleDatalayer'];
-        f = _.isFunction(f) ? f : undefined;
         return P.all(_.map(config.Layer, function(dataLayer) {
             if (!dataLayer.Datasource)
                 return;
@@ -250,52 +247,43 @@ _.extend(ProjectLoader.prototype, Commons.Events, {
             if (!result) {
                 result = P();
             }
-            return result.then(function() {
-                return f ? f.call(options, {
-                    projectDir : projectDir,
-                    config : config,
-                    dataLayer : dataLayer
-                }) : undefined;
-            });
-
-            function prepareDbSource(dataLayer) {
-                return P().then(
-                        function() {
-                            var file = dataLayer.Datasource.file;
-                            var table = dataLayer.Datasource.table;
-                            if (file && !table) {
-                                file = Path.join(projectDir, file);
-                                return Commons.IO.readString(file).then(
-                                        function(content) {
-                                            delete dataLayer.Datasource.file;
-                                            dataLayer.Datasource.table = '(' // 
-                                                    + content + ') as data';
-                                        });
-                            }
-                        });
-            }
-            function prepareFileSource(dataLayer) {
-                var url = dataLayer.Datasource.file;
-                var promise = P();
-                if (url && url.match(/^https?:\/\/.*$/gim)) {
-                    var layersDir = Path.join(projectDir, 'data');
-                    promise = that._downloadAndUnzip(url, layersDir).then(
-                            function(dataDir) {
-                                return that._findDataIndex(dataDir, url);
-                            }).then(function(filePath) {
-                        dataLayer.Datasource.file = filePath;
-                        dataLayer.Datasource.type = 'shape';
+            return result;
+        }));
+        function prepareDbSource(dataLayer) {
+            return P().then(function() {
+                var file = dataLayer.Datasource.file;
+                var table = dataLayer.Datasource.table;
+                if (file && !table) {
+                    file = Path.join(projectDir, file);
+                    return Commons.IO.readString(file).then(function(content) {
+                        delete dataLayer.Datasource.file;
+                        dataLayer.Datasource.table = '(' // 
+                                + content + ') as data';
                     });
                 }
-                return promise.then(function(result) {
-                    if (dataLayer.Datasource.file) {
-                        dataLayer.Datasource.file = Path.resolve(projectDir,
-                                dataLayer.Datasource.file);
-                    }
-                    return result;
+            });
+        }
+        function prepareFileSource(dataLayer) {
+            var url = dataLayer.Datasource.file;
+            var promise = P();
+            if (url && url.match(/^https?:\/\/.*$/gim)) {
+                var layersDir = Path.join(projectDir, 'data');
+                promise = that._downloadAndUnzip(url, layersDir).then(
+                        function(dataDir) {
+                            return that._findDataIndex(dataDir, url);
+                        }).then(function(filePath) {
+                    dataLayer.Datasource.file = filePath;
+                    dataLayer.Datasource.type = 'shape';
                 });
             }
-        }))
+            return promise.then(function(result) {
+                if (dataLayer.Datasource.file) {
+                    dataLayer.Datasource.file = Path.resolve(projectDir,
+                            dataLayer.Datasource.file);
+                }
+                return result;
+            });
+        }
     },
     _loadProjectStyles : function(projectDir, config) {
         var that = this;

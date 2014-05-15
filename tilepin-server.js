@@ -9,20 +9,24 @@ var Path = require('path');
 var Commons = require('./tilepin-commons');
 var Tilepin = require('./tilepin');
 var TilepinCache = require('./tilepin-cache-redis');
-var TileMillProjectLoader = require('./tilepin-loader');
 var MapExport = require('./tilepin-export');
 
 var workDir = process.cwd();
 var config = loadConfig(workDir, [ 'tilepin.config.js', 'tilepin.config.json',
         'config.js', 'config.json' ]);
-var port = config.port || 8888;
-var redisOptions = config.redisOptions || {};
 
+var port = config.port || 8888;
+
+var redisOptions = config.redisOptions || {};
 var tileCache = new TilepinCache(redisOptions);
 
 var tmpFileDir = Path.join(workDir, 'tmp');
-var projectLoader = new TileMillProjectLoader({
-    dir : workDir,
+var eventManager = new EventManager();
+var options = {
+    eventManager : eventManager, // Centralized event manager
+    cache : tileCache, // Redis cache
+    dir : workDir, // Working directory containing map layers
+    tmpDir : tmpFileDir, // Used to generate PDF/SVG maps
     handleDatalayer : function(options) {
         var dataLayer = options.dataLayer;
         if (dataLayer.Datasource && dataLayer.Datasource.type == 'postgis') {
@@ -31,28 +35,16 @@ var projectLoader = new TileMillProjectLoader({
                 db.call(config, options);
             } else {
                 var projectConf = options.config;
-                console.log(options);
                 var sourceKey = options.params.source;
                 var dbParams = db[sourceKey];
                 _.extend(dataLayer.Datasource, dbParams);
             }
         }
     }
-});
-var eventManager = new EventManager();
-var options = {
-    eventManager : eventManager,
-    cache : tileCache,
-    styleDir : workDir,
-    projectLoader : projectLoader,
-    tmpDir : tmpFileDir
 };
 var mapExport = new MapExport(options);
 var dir = __dirname;
-var baseProvider = new Tilepin.ProjectBasedTilesProvider(options);
-options.provider = function(params, force) {
-    return baseProvider;
-};
+
 function trace(options) {
     console.log(options.eventName, options.arguments);
 }
@@ -65,8 +57,7 @@ eventManager.on('getTile:end', trace);
 // eventManager.on('loadTileSource:setInCache', trace);
 // eventManager.on('clearTileSource:clearCache', trace);
 
-var tileProvider = new Tilepin.CachingTilesProvider(options);
-baseProvider.setTopTilesProvider(tileProvider);
+var tileProvider = new Tilepin.TilesProvider(options);
 
 var promise = P();
 promise = promise

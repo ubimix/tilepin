@@ -13,7 +13,6 @@ var TileSourceManager = require('./tilepin-provider');
 function TilesProvider(options) {
     this.options = options || {};
     this.cache = options.cache || new MemCache();
-    this.provider = options.provider;
     this.tileSourceManager = new TileSourceManager(this.options);
     var eventManager = this._getEventManager();
     Commons.addEventTracing(this, [ 'invalidate', 'loadTile', 'loadInfo' ],
@@ -88,13 +87,6 @@ _.extend(TilesProvider.prototype, Commons.Events, {
         }
         return key;
     },
-    _getTilesProvider : function(params, force) {
-        var provider = this.options.provider || this.options.getProvider;
-        if (_.isFunction(provider)) {
-            provider = provider.call(this, params, force);
-        }
-        return P(provider);
-    },
     _getEventManager : function() {
         var eventManager = this.options.eventManager || this;
         return eventManager;
@@ -128,7 +120,6 @@ _.extend(TilesProvider.prototype, Commons.Events, {
         }
         return key;
     },
-
     _readTile : function(tileSource, params) {
         var deferred = P.defer();
         try {
@@ -152,8 +143,7 @@ _.extend(TilesProvider.prototype, Commons.Events, {
         }
         return deferred.promise;
     },
-
-})
+});
 
 function MemCache(options) {
     this.options = options || {};
