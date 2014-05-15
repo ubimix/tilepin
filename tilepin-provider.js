@@ -142,7 +142,6 @@ _.extend(TileSourceProvider.prototype, {
             });
             return P.ninvoke(renderer, 'render', config) // 
             .then(function(xml) {
-                console.log('>>>', xml);
                 return {
                     base : dir,
                     pathname : file,
