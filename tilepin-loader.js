@@ -251,7 +251,8 @@ _.extend(ProjectLoader.prototype, Commons.Events, {
         }));
         function prepareDbSource(dataLayer) {
             return P().then(function() {
-                var file = dataLayer.Datasource.file;
+                var file = dataLayer.Datasource.file //
+                        || dataLayer.Datasource.query;
                 var table = dataLayer.Datasource.table;
                 if (file && !table) {
                     file = Path.join(projectDir, file);
