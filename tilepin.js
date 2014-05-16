@@ -41,7 +41,6 @@ _.extend(TilesProvider.prototype, Commons.Events, {
                         return result;
                     });
                 });
-
             });
         }).then(function() {
             return that.tileSourceManager.clearTileSourceProvider(params);
