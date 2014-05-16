@@ -76,12 +76,16 @@ describe('TilesProvider', function() {
             }
         }, options));
 
-        provider.loadTile({
-            source : 'project-01',
-            format : 'grid.json',
-            z : 1,
-            x : 0,
-            y : 0,
+        provider.invalidate({
+            source : 'project-01'
+        }).then(function() {
+            return provider.loadTile({
+                source : 'project-01',
+                format : 'grid.json',
+                z : 1,
+                x : 0,
+                y : 0,
+            });
         }).then(
                 function(info) {
                     var expected = Path.resolve(__dirname,
