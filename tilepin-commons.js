@@ -1,6 +1,6 @@
 var _ = require('underscore');
-// var P = require('q');
-var P = require('when');
+var P = require('q');
+// var P = require('when');
 var FS = require('fs');
 var Path = require('path');
 

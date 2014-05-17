@@ -109,17 +109,15 @@ _.extend(TileSourceProvider.prototype, {
 
     open : function(params) {
         var that = this;
-        if (that._opening) {
-            return that._opening;
-        }
+        return P();
+        // FIXME:
         var sourceKey = that._getSourceKey();
         var projectDir = that._getProjectDir();
-        return that._opening = that.options.projectLoader.loadProjectConfig(
-                projectDir).then(function(configInfo) {
-            that.configInfo = configInfo;
-            delete that._opening;
-            return that;
-        });
+        return that.options.projectLoader.loadProjectConfig(projectDir).then(
+                function(configInfo) {
+                    that.configInfo = configInfo;
+                    return that;
+                });
     },
 
     close : function(params) {
@@ -129,8 +127,9 @@ _.extend(TileSourceProvider.prototype, {
             delete that._handlers;
             delete that._projectConfigPromise;
         }).then(function() {
-            var projectDir = that._getProjectDir();
-            return that.options.projectLoader.clearProjectConfig(projectDir);
+            // FIXME:
+            // var projectDir = that._getProjectDir();
+            // return that.options.projectLoader.clearProjectConfig(projectDir);
         }).then(function() {
             return that._promises.reset();
         }).then(function() {
@@ -139,7 +138,8 @@ _.extend(TileSourceProvider.prototype, {
     },
 
     _getConfig : function(deepCopy) {
-        var config = this.configInfo.config;
+        // var config = this.configInfo.config;
+        var config = this.options.config;
         if (deepCopy === true) {
             config = JSON.parse(JSON.stringify(config));
         }
@@ -205,8 +205,8 @@ _.extend(TileSourceProvider.prototype, {
     },
 
     _getMapnikConfigDir : function() {
-        var dir = this._getProjectDir();
-        // var dir = Path.dirname(file);
+        var file = this.options.pathname;
+        var dir = Path.dirname(file);
         return dir;
     },
     _getMapnikConfigFile : function(id) {
@@ -339,9 +339,9 @@ _.extend(TileSourceProvider.prototype, {
     _getVectorTilesParams : function(params, uri) {
         var properties = uri.properties || {};
         var result = null;
-        var source = this._getSourceKey();
-        if (source == '') { // ????
-            source = (properties.useVectorTiles ? '' : null);
+        var source = properties.source || '';
+        if (source == '') {
+            source = (properties.useVectorTiles ? this._getSourceKey() : null);
         }
         if (source && source != '') {
             result = _.extend({}, params, {
@@ -471,24 +471,34 @@ _.extend(TileSourceManager.prototype, Commons.Events, {
         var that = this;
         var eventManager = that._getEventManager();
         return P().then(function() {
-            var cacheKey = that._getCacheKey(params);
+            var format = that._getTileFormat(params);
+            var cacheKey = that._getCacheKey(params, format);
             var provider = that.sourceCache.get(cacheKey);
             if (provider) {
                 eventManager.fire('loadTileSourceProvider:loadFromCache', {
                     eventName : 'loadTileSourceProvider:loadFromCache',
                     arguments : [ params ],
+                    format : format,
                     provider : provider
                 });
                 return provider;
             }
-            var provider = that._newTileSourceProvider(params);
-            eventManager.fire('loadTileSourceProvider:setInCache', {
-                eventName : 'loadTileSourceProvider:setInCache',
-                arguments : [ params ],
-                provider : provider
+            eventManager.fire('loadTileSourceProvider:missedInCache', {
+                eventName : 'loadTileSourceProvider:missedInCache',
+                format : format,
+                arguments : [ params ]
             });
-            that.sourceCache.set(cacheKey, provider);
-            return provider.open(params);
+            return that._getTileSourceProvider(cacheKey, params) //
+            .then(function(provider) {
+                eventManager.fire('loadTileSourceProvider:setInCache', {
+                    eventName : 'loadTileSourceProvider:setInCache',
+                    arguments : [ params ],
+                    format : format,
+                    provider : provider
+                });
+                that.sourceCache.set(cacheKey, provider);
+                return provider;
+            });
         });
     },
 
@@ -496,29 +506,49 @@ _.extend(TileSourceManager.prototype, Commons.Events, {
     clearTileSourceProvider : function(params) {
         var that = this;
         return P().then(function() {
-            return that.loadTileSourceProvider(params);
-        }).then(function(provider) {
-            var eventManager = that._getEventManager();
-            var eventName = 'clearTileSourceProvider:clearCache';
-            eventManager.fire(eventName, {
-                eventName : eventName,
-                arguments : [ params ],
-                provider : provider
+            var formats = that._getTileFormats(params);
+            var promises = _.map(formats, function(format) {
+                var cacheKey = that._getCacheKey(params, format);
+                return P().then(function() {
+                    var provider = that.sourceCache.get(cacheKey);
+                    if (provider) {
+                        return provider;
+                    }
+                    return that._getTileSourceProvider(cacheKey, params);
+                }).then(function(provider) {
+                    var eventManager = that._getEventManager();
+                    var eventName = 'clearTileSourceProvider:clearCache';
+                    eventManager.fire(eventName, {
+                        eventName : eventName,
+                        arguments : [ params ],
+                        format : format,
+                        provider : provider
+                    });
+                    return provider.clear(params).fin(function() {
+                        that.sourceCache.del(cacheKey);
+                        return provider.close();
+                    });
+                });
+            })
+            return P.all(promises).then(function() {
+                var sourceKey = that._getSourceKey(params);
+                var projectDir = that._getProjectDir(sourceKey);
+                return that.projectLoader.clearProjectConfig(projectDir);
             });
-            return provider.clear(params).then(function() {
-                return provider.close(params);
-            });
-        }).then(function() {
-            var cacheKey = that._getCacheKey(params);
-            that.sourceCache.del(cacheKey);
-        }, function(err) {
-            var cacheKey = that._getCacheKey(params);
-            that.sourceCache.del(cacheKey);
-            throw err;
         });
     },
 
     /* ---------------------------------------------------------------------- */
+
+    _getTileFormats : function() {
+        // TODO: check that it is all possible formats
+        var formats = [ 'png', 'pbf', 'vtile', 'grid.json' ];
+        return formats;
+    },
+
+    _getTileFormat : function(params) {
+        return params.format || 'png';
+    },
 
     _getSourceKey : function(params) {
         return params.source || '';
@@ -528,8 +558,9 @@ _.extend(TileSourceManager.prototype, Commons.Events, {
      * An internal method returning a cache key for the source defined in the
      * parameters.
      */
-    _getCacheKey : function(params) {
+    _getCacheKey : function(params, format) {
         var key = this._getSourceKey(params);
+        key += '-' + format;
         return key;
     },
 
@@ -542,6 +573,13 @@ _.extend(TileSourceManager.prototype, Commons.Events, {
         return this.options.tileSourceCacheTTL || 60 * 60 * 1000;
     },
 
+    _loadProjectConfig : function(params) {
+        var that = this;
+        var sourceKey = that._getSourceKey(params);
+        var projectDir = that._getProjectDir(sourceKey);
+        return that.projectLoader.loadProjectConfig(projectDir);
+    },
+
     _getProjectDir : function(sourceKey) {
         var dir = this.options.dir || this.options.styleDir || __dirname;
         dir = Path.join(dir, sourceKey);
@@ -549,7 +587,25 @@ _.extend(TileSourceManager.prototype, Commons.Events, {
         return dir;
     },
 
-    _newTileSourceProvider : function(params) {
+    _getTileSourceProvider : function(cacheKey, params) {
+        var that = this;
+        var promiseKey = cacheKey;
+        var index = that._sourceLoadingIndex || {};
+        that._sourceLoadingIndex = index;
+        var promise = index[promiseKey];
+        if (!promise) {
+            promise = index[promiseKey] = P().then(function() {
+                return that._loadProjectConfig(params);
+            }).then(function(config) {
+                return that._newTileSourceProvider(config, params);
+            }).fin(function() {
+                delete index[promiseKey];
+            });
+        }
+        return promise;
+    },
+
+    _newTileSourceProvider : function(info, params) {
         var that = this;
         var sourceKey = that._getSourceKey(params);
         var projectDir = that._getProjectDir(sourceKey);
@@ -557,9 +613,8 @@ _.extend(TileSourceManager.prototype, Commons.Events, {
             sourceKey : sourceKey,
             projectDir : projectDir,
             eventManager : that._getEventManager(),
-            sourceManager : that,
-            projectLoader : that.projectLoader
-        }));
+            sourceManager : that
+        }, info));
     },
 
     _deleteTileSourceProvider : function(provider) {
