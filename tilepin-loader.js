@@ -48,22 +48,26 @@ _.extend(ProjectLoader.prototype, Commons.Events, {
         var promise = that._promises[projectDir];
         if (promise)
             return promise;
-        return that._promises[projectDir] = that._readProjectFile(projectDir)
-                .then(function(json) {
-                    var promises = [];
-                    var conf = json.config;
-                    promises.push(that._processDataSources(projectDir, conf));
-                    promises.push(that._loadProjectStyles(projectDir, conf));
-                    return P.all(promises).then(function() {
-                        return json;
-                    });
-                }).fin(function() {
-                    delete that._promises[projectDir];
-                });
+        return that._promises[projectDir] = //
+        that._readProjectFile(projectDir).then(function(json) {
+            var promises = [];
+            var conf = json.config;
+            promises.push(that._processDataSources(projectDir, conf));
+            promises.push(that._loadProjectStyles(projectDir, conf));
+            return P.all(promises).then(function() {
+                return json;
+            });
+        }).then(function(json) {
+            delete that._promises[projectDir];
+            return json;
+        }, function(err) {
+            delete that._promises[projectDir];
+            throw err;
+        });
     },
 
     _findDataIndex : function(dir, url) {
-        return P.nfcall(FS.readdir, dir).then(function(list) {
+        return P.ninvoke(FS, 'readdir', dir).then(function(list) {
             var result = null;
             _.each(list, function(file) {
                 if (file.lastIndexOf('.shp') > 0) {
@@ -89,20 +93,7 @@ _.extend(ProjectLoader.prototype, Commons.Events, {
                 + that._getSha1(url);
         var dataDir = Path.join(dir, path);
         var dataFileName = Path.join(dataDir, Path.basename(obj.pathname));
-        var promise = P();
-        if (!FS.existsSync(dataDir)) {
-            promise = promise.then(function() {
-                var segments = dataDir.split('/');
-                var p = '';
-                _.each(segments, function(segment) {
-                    p = (p == '' && segment == '') ? '/' : Path
-                            .join(p, segment);
-                    if (!FS.existsSync(p)) {
-                        FS.mkdirSync(p);
-                    }
-                });
-            })
-        }
+        var promise = Commons.IO.mkdirs(dataDir);
         return promise.then(function() {
             if (!FS.existsSync(dataFileName)) {
                 return that._download(dataFileName, url)
@@ -154,7 +145,7 @@ _.extend(ProjectLoader.prototype, Commons.Events, {
         var dataDir = Path.dirname(dataFileName);
         function f() {
         }
-        return P.nfcall(FS.mkdir, dataDir).then(f, f).then(function() {
+        return P.ninvoke(FS, 'mkdir', dataDir).then(f, f).then(function() {
             var options = Url.parse(url);
             return httpGet(options, 0).then(function(res) {
                 var diferred = P.defer();
@@ -243,9 +234,6 @@ _.extend(ProjectLoader.prototype, Commons.Events, {
                     result = prepareFileSource(dataLayer);
                 }
                 break;
-            }
-            if (!result) {
-                result = P();
             }
             return result;
         }));

@@ -3,6 +3,7 @@ var _ = require('underscore');
 var FS = require('fs');
 var Path = require('path');
 var ProjectLoader = require('../tilepin-loader');
+var P = require('../tilepin-commons').P;
 
 var options = {
     dir : __dirname
@@ -41,9 +42,10 @@ describe('TileProjectLoader', function() {
     var projectFile = Path.join(projectDir, 'project.mml');
 
     it('should be able to prepare project '
-            + 'and return a ready to use configuration object', function(done) {
+            + 'and return a ready to use configuration object', // 
+    suite(function() {
         var params = {};
-        loader.loadProjectConfig(projectDir).then(
+        return loader.loadProjectConfig(projectDir).then(
                 function(json) {
                     expect(json.pathname).to.eql(projectFile);
                     var config = json.config;
@@ -54,16 +56,16 @@ describe('TileProjectLoader', function() {
                             + '/ne_110m_admin_0_countries.shp';
                     path = Path.join(projectDir, path);
                     expect(layers[0].Datasource.file).to.eql(path);
-                }).fin(done).done();
-    })
+                });
+    }))
 
-    it('should be able to prepare and ' + 'load TileMill projects', function(
-            done) {
+    it('should be able to prepare and ' + 'load TileMill projects', // 
+    suite(function() {
         expect(counters.clearProjectConfig.begin).to.be(0);
         expect(counters.clearProjectConfig.end).to.be(0);
         expect(counters.loadProjectConfig.begin).to.be(0);
         expect(counters.loadProjectConfig.end).to.be(0);
-        loader.loadProjectConfig(projectDir).then(function(info) {
+        return loader.loadProjectConfig(projectDir).then(function(info) {
             expect(counters.clearProjectConfig.begin).to.be(0);
             expect(counters.clearProjectConfig.end).to.be(0);
             expect(counters.loadProjectConfig.begin).to.be(1);
@@ -72,10 +74,11 @@ describe('TileProjectLoader', function() {
             expect(info).not.to.be(null);
             expect(info.pathname).to.eql(projectFile);
             expect(info.xml).not.to.be(null);
-        }).fin(done).done();
-    })
+        });
+    }))
 
-    it('should be able to cleanup the project file', function(done) {
+    it('should be able to cleanup the project file',//
+    suite(function() {
         expect(counters.clearProjectConfig.begin).to.be(0);
         expect(counters.clearProjectConfig.end).to.be(0);
         expect(counters.loadProjectConfig.begin).to.be(0);
@@ -100,8 +103,17 @@ describe('TileProjectLoader', function() {
                     expect(counters.loadProjectConfig.begin).to.be(2);
                     expect(counters.loadProjectConfig.end).to.be(2);
                 })
-            }).fin(done).done();
-        })
-    })
+            });
+        });
+    }))
 
 })
+
+function suite(test) {
+    return function(done) {
+        return P().then(test).then(done, function(err) {
+            done();
+            throw err;
+        }).done();
+    }
+}

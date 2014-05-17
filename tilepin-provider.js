@@ -54,8 +54,7 @@ _.extend(TileSourceProvider.prototype, {
             }) //
             .then(function(tileSource) {
                 return that._wrapTileSource(tileSource, params);
-            }) // 
-            .fail(function(err) {
+            }, function(err) {
                 that._promises.del(id);
                 throw err;
             });
@@ -475,10 +474,17 @@ _.extend(TileSourceManager.prototype, Commons.Events, {
                         format : format,
                         provider : provider
                     });
-                    return provider.clear(params).fin(function() {
+                    return provider.clear(params).then(function(result) {
+                        done();
+                        return result;
+                    }, function(err) {
+                        done();
+                        throw err;
+                    });
+                    function done() {
                         that.sourceCache.del(cacheKey);
                         return provider.close();
-                    });
+                    }
                 });
             })
             return P.all(promises).then(function() {
@@ -549,8 +555,12 @@ _.extend(TileSourceManager.prototype, Commons.Events, {
                 return that._loadProjectConfig(params);
             }).then(function(config) {
                 return that._newTileSourceProvider(config, params);
-            }).fin(function() {
+            }).then(function(result) {
                 delete index[promiseKey];
+                return result;
+            }, function(err) {
+                delete index[promiseKey];
+                throw err;
             });
         }
         return promise;
