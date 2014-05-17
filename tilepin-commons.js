@@ -29,6 +29,17 @@ P.ninvoke = P.ninvoke || function(object, name /* ...args */) {
     }
     return deferred.promise;
 };
+P.nresolver = function(deferred) {
+    return function(error, value) {
+        if (error) {
+            deferred.reject(error);
+        } else if (arguments.length > 2) {
+            deferred.resolve(array_slice(arguments, 1));
+        } else {
+            deferred.resolve(value);
+        }
+    };
+}
 
 var Events = {
 

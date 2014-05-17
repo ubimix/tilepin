@@ -22,29 +22,38 @@ _.extend(TilesProvider.prototype, Commons.Events, {
 
     invalidate : function(params) {
         var that = this;
+        var sourceKey = that._getSourceKey(params);
+        var resetAll = true;
+        var cacheKeys = [];
         return P().then(function() {
-            return that.tileSourceManager.loadTileSourceProvider(params) //
+            return that.tileSourceManager //
+            .loadTileSourceProvider(params) //
             .then(function(provider) {
                 return that._getFormats(params).then(function(formats) {
-                    var sourceKey = that._getSourceKey(params);
-                    var resetAll = true;
                     return P.all(_.map(formats, function(format) {
                         var cacheKey = provider.getCacheKey(params, format);
-                        if (cacheKey) {
-                            resetAll = false;
-                            return that.cache.reset(sourceKey, cacheKey);
-                        }
-                    })).then(function(result) {
-                        if (resetAll) {
-                            return that.cache.reset(sourceKey);
-                        }
-                        return result;
-                    });
+                        cacheKeys.push(cacheKey);
+                    }));
                 });
             });
         }).then(function() {
-            return that.tileSourceManager.clearTileSourceProvider(params);
+            return P.all([ invalidateCache(), clearTileSourceProvider() ]);
+        }, function(err) {
+            return P.all([ invalidateCache(), clearTileSourceProvider() ]);
+            throw err;
         });
+        function invalidateCache() {
+            if (cacheKeys.length) {
+                return P.all(_.map(cacheKeys, function(cacheKey) {
+                    return that.cache.reset(sourceKey, cacheKey);
+                }));
+            } else {
+                return that.cache.reset(sourceKey);
+            }
+        }
+        function clearTileSourceProvider() {
+            return that.tileSourceManager.clearTileSourceProvider(params);
+        }
     },
 
     loadTile : function(params) {

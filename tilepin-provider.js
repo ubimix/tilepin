@@ -107,21 +107,30 @@ _.extend(TileSourceProvider.prototype, {
                 })
     },
 
-    open : function(params) {
+    open : function() {
         var that = this;
-        var sourceKey = that._getSourceKey();
-        var projectDir = that._getProjectDir();
-        return that.options.projectLoader.loadProjectConfig(projectDir).then(
-                function(configInfo) {
-                    that.configInfo = configInfo;
-                    return that;
-                });
+        if (this._projectConfigPromise)
+            return this._projectConfigPromise;
+        return this._projectConfigPromise = P().then(
+                function() {
+                    var sourceKey = that._getSourceKey();
+                    var projectDir = that._getProjectDir();
+                    var projectLoader = that.options.projectLoader;
+                    return projectLoader.loadProjectConfig(projectDir)//
+                    .then(
+                            function(configInfo) {
+                                that.configInfo = configInfo;
+                                return projectLoader.processProjectConfig(
+                                        projectDir, configInfo);
+                            }).then(function() {
+                        return that;
+                    });
+                })
     },
 
     close : function(params) {
         var that = this;
         return P().then(function() {
-            delete that._opening;
             delete that._handlers;
             delete that._projectConfigPromise;
         }).then(function() {
@@ -483,7 +492,9 @@ _.extend(TileSourceManager.prototype, Commons.Events, {
                 provider : provider
             });
             that.sourceCache.set(cacheKey, provider);
-            return provider.open(params);
+            return provider;
+        }).then(function(provider){
+            return provider.open();
         });
     },
 
@@ -491,7 +502,12 @@ _.extend(TileSourceManager.prototype, Commons.Events, {
     clearTileSourceProvider : function(params) {
         var that = this;
         return P().then(function() {
-            return that.loadTileSourceProvider(params);
+            var cacheKey = that._getCacheKey(params);
+            var provider = that.sourceCache.get(cacheKey);
+            if (!provider) {
+                provider = that._newTileSourceProvider(params);
+            }
+            return provider;
         }).then(function(provider) {
             var eventManager = that._getEventManager();
             var eventName = 'clearTileSourceProvider:clearCache';

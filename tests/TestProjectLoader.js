@@ -45,7 +45,9 @@ describe('TileProjectLoader', function() {
             + 'and return a ready to use configuration object', // 
     suite(function() {
         var params = {};
-        return loader.loadProjectConfig(projectDir).then(
+        return loader.loadProjectConfig(projectDir).then(function(info) {
+            return loader.processProjectConfig(projectDir, info);
+        }).then(
                 function(json) {
                     expect(json.pathname).to.eql(projectFile);
                     var config = json.config;
@@ -65,7 +67,9 @@ describe('TileProjectLoader', function() {
         expect(counters.clearProjectConfig.end).to.be(0);
         expect(counters.loadProjectConfig.begin).to.be(0);
         expect(counters.loadProjectConfig.end).to.be(0);
-        loader.loadProjectConfig(projectDir).then(function(info) {
+        return loader.loadProjectConfig(projectDir).then(function(info) {
+            return loader.processProjectConfig(projectDir, info);
+        }).then(function(info) {
             expect(counters.clearProjectConfig.begin).to.be(0);
             expect(counters.clearProjectConfig.end).to.be(0);
             expect(counters.loadProjectConfig.begin).to.be(1);

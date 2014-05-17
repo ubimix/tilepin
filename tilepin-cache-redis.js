@@ -41,7 +41,7 @@ _.extend(RedisCache.prototype, {
     _invokeClient : function(method, args) {
         var deferred = P.defer();
         try {
-            args.push(deferred.makeNodeResolver());
+            args.push(P.nresolver(deferred));
             method = this.client[method];
             method.apply(this.client, args);
         } catch (e) {
@@ -59,14 +59,14 @@ _.extend(RedisCache.prototype, {
         if (!obj)
             return P();
         var str = JSON.stringify(obj);
-        return P.nfcall(Zlib.gzip, str).then(function(result) {
+        return P.ninvoke(Zlib, 'gzip', str).then(function(result) {
             return result;
         })
     },
     _convertBufferToJson : function(buf) {
         if (!buf)
             return P();
-        return P.nfcall(Zlib.gunzip, buf).then(function(buf) {
+        return P.ninvoke(Zlib, 'gunzip', buf).then(function(buf) {
             var str = buf.toString('utf8');
             var result = JSON.parse(str);
             return result;

@@ -43,27 +43,20 @@ _.extend(ProjectLoader.prototype, Commons.Events, {
         return promise;
     },
 
+    processProjectConfig : function(projectDir, projectInfo) {
+        var that = this;
+        var promises = [];
+        var conf = projectInfo.config;
+        promises.push(that._processDataSources(projectDir, conf));
+        promises.push(that._loadProjectStyles(projectDir, conf));
+        return P.all(promises).then(function() {
+            return projectInfo;
+        });
+    },
+
     loadProjectConfig : function(projectDir) {
         var that = this;
-        var promise = that._promises[projectDir];
-        if (promise)
-            return promise;
-        return that._promises[projectDir] = //
-        that._readProjectFile(projectDir).then(function(json) {
-            var promises = [];
-            var conf = json.config;
-            promises.push(that._processDataSources(projectDir, conf));
-            promises.push(that._loadProjectStyles(projectDir, conf));
-            return P.all(promises).then(function() {
-                return json;
-            });
-        }).then(function(json) {
-            delete that._promises[projectDir];
-            return json;
-        }, function(err) {
-            delete that._promises[projectDir];
-            throw err;
-        });
+        return that._readProjectFile(projectDir);
     },
 
     _findDataIndex : function(dir, url) {
