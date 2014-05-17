@@ -58,6 +58,7 @@ _.extend(ProjectLoader.prototype, Commons.Events, {
                 return json;
             });
         }).then(function(json) {
+            delete that._promises[projectDir];
             return json;
         }, function(err) {
             delete that._promises[projectDir];

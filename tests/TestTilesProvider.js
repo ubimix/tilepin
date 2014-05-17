@@ -54,12 +54,11 @@ describe('TilesProvider', function() {
                     })
                 });
     }))
-    return;
 
     it('should generate UTFGrid tiles', //
     suite(function() {
         var provider = new TilesProvider(options);
-        provider.loadTile({
+        return provider.loadTile({
             source : 'project-01',
             format : 'grid.json',
             z : 1,

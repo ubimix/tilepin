@@ -54,8 +54,7 @@ _.extend(TileSourceProvider.prototype, {
             }) //
             .then(function(tileSource) {
                 return that._wrapTileSource(tileSource, params);
-            }) // 
-            .then(null, function(err) {
+            }, function(err) {
                 that._promises.del(id);
                 throw err;
             });
