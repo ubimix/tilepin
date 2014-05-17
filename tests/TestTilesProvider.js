@@ -21,9 +21,6 @@ function toString(obj) {
 }
 
 describe('TilesProvider', function() {
-    beforeEach(function() {
-        console.log('-----------------')
-    })
 
     it('should create PNG tiles', //
     suite(function(done) {
@@ -36,7 +33,6 @@ describe('TilesProvider', function() {
             y : 0,
         };
         return P().then(function() {
-            console.log(provider.invalidate);
             return provider.invalidate(params);
         }).then(function() {
             return provider.loadTile(params);
@@ -47,9 +43,7 @@ describe('TilesProvider', function() {
                     return P.ninvoke(FS, 'readFile', file).then(function(buf) {
                         var first = getHash(info.tile);
                         var second = getHash(buf);
-
-                        P.ninvoke(FS, 'writeFile', 'tile.png', info.tile);
-                        console.log('AFTER GENERATION', first, second)
+                        // P.ninvoke(FS, 'writeFile', 'tile.png', info.tile);
                         expect(first).to.eql(second);
                     })
                 });

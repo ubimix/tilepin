@@ -84,7 +84,7 @@ promise = promise
             source : req.param('source')
         }).then(function(result) {
             sendReply(req, res, 200, 'OK');
-        }).fail(function(err) {
+        }, function(err) {
             sendError(req, res, err);
         }).done();
     });
@@ -101,7 +101,7 @@ promise = promise
         });
         tileProvider.loadTile(conf).then(function(result) {
             sendReply(req, res, 200, result.tile, result.headers);
-        }).fail(function(err) {
+        }, function(err) {
             sendError(req, res, err);
         }).done();
     });
@@ -140,7 +140,7 @@ promise = promise
                 id : result.interactivity_layer
             } ]
             sendReply(req, res, 200, result);
-        }).fail(function(err) {
+        }, function(err) {
             sendError(req, res, err);
         }).done();
 
@@ -171,7 +171,7 @@ promise = promise
         };
         return mapExport.generateMap(params).then(function(result) {
             sendReply(req, res, 200, result.file, result.headers);
-        }).fail(function(err) {
+        }, function(err) {
             sendError(req, res, err);
         }).done();
     });

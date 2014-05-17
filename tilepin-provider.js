@@ -43,7 +43,7 @@ _.extend(TileSourceProvider.prototype, {
         var id = that._getCacheId(params);
         // FIXME: add expiration of individual requests
         var promise = that._promises.get(id);
-        console.log(' * ', this._getSourceKey(), id, promise);
+        // console.log(' * ', this._getSourceKey(), id, promise);
         if (!promise) {
             promise = that._loadMapnikConfig(params, id) // 
             .then(function(uri) {
@@ -109,8 +109,6 @@ _.extend(TileSourceProvider.prototype, {
 
     open : function(params) {
         var that = this;
-        return P();
-        // FIXME:
         var sourceKey = that._getSourceKey();
         var projectDir = that._getProjectDir();
         return that.options.projectLoader.loadProjectConfig(projectDir).then(
@@ -127,9 +125,8 @@ _.extend(TileSourceProvider.prototype, {
             delete that._handlers;
             delete that._projectConfigPromise;
         }).then(function() {
-            // FIXME:
-            // var projectDir = that._getProjectDir();
-            // return that.options.projectLoader.clearProjectConfig(projectDir);
+            var projectDir = that._getProjectDir();
+            return that.options.projectLoader.clearProjectConfig(projectDir);
         }).then(function() {
             return that._promises.reset();
         }).then(function() {
@@ -138,8 +135,7 @@ _.extend(TileSourceProvider.prototype, {
     },
 
     _getConfig : function(deepCopy) {
-        // var config = this.configInfo.config;
-        var config = this.options.config;
+        var config = this.configInfo.config;
         if (deepCopy === true) {
             config = JSON.parse(JSON.stringify(config));
         }
@@ -205,8 +201,7 @@ _.extend(TileSourceProvider.prototype, {
     },
 
     _getMapnikConfigDir : function() {
-        var file = this.options.pathname;
-        var dir = Path.dirname(file);
+        var dir = this._getProjectDir();
         return dir;
     },
     _getMapnikConfigFile : function(id) {
@@ -471,34 +466,24 @@ _.extend(TileSourceManager.prototype, Commons.Events, {
         var that = this;
         var eventManager = that._getEventManager();
         return P().then(function() {
-            var format = that._getTileFormat(params);
-            var cacheKey = that._getCacheKey(params, format);
+            var cacheKey = that._getCacheKey(params);
             var provider = that.sourceCache.get(cacheKey);
             if (provider) {
                 eventManager.fire('loadTileSourceProvider:loadFromCache', {
                     eventName : 'loadTileSourceProvider:loadFromCache',
                     arguments : [ params ],
-                    format : format,
                     provider : provider
                 });
                 return provider;
             }
-            eventManager.fire('loadTileSourceProvider:missedInCache', {
-                eventName : 'loadTileSourceProvider:missedInCache',
-                format : format,
-                arguments : [ params ]
+            var provider = that._newTileSourceProvider(params);
+            eventManager.fire('loadTileSourceProvider:setInCache', {
+                eventName : 'loadTileSourceProvider:setInCache',
+                arguments : [ params ],
+                provider : provider
             });
-            return that._getTileSourceProvider(cacheKey, params) //
-            .then(function(provider) {
-                eventManager.fire('loadTileSourceProvider:setInCache', {
-                    eventName : 'loadTileSourceProvider:setInCache',
-                    arguments : [ params ],
-                    format : format,
-                    provider : provider
-                });
-                that.sourceCache.set(cacheKey, provider);
-                return provider;
-            });
+            that.sourceCache.set(cacheKey, provider);
+            return provider.open(params);
         });
     },
 
@@ -506,49 +491,29 @@ _.extend(TileSourceManager.prototype, Commons.Events, {
     clearTileSourceProvider : function(params) {
         var that = this;
         return P().then(function() {
-            var formats = that._getTileFormats(params);
-            var promises = _.map(formats, function(format) {
-                var cacheKey = that._getCacheKey(params, format);
-                return P().then(function() {
-                    var provider = that.sourceCache.get(cacheKey);
-                    if (provider) {
-                        return provider;
-                    }
-                    return that._getTileSourceProvider(cacheKey, params);
-                }).then(function(provider) {
-                    var eventManager = that._getEventManager();
-                    var eventName = 'clearTileSourceProvider:clearCache';
-                    eventManager.fire(eventName, {
-                        eventName : eventName,
-                        arguments : [ params ],
-                        format : format,
-                        provider : provider
-                    });
-                    return provider.clear(params).fin(function() {
-                        that.sourceCache.del(cacheKey);
-                        return provider.close();
-                    });
-                });
-            })
-            return P.all(promises).then(function() {
-                var sourceKey = that._getSourceKey(params);
-                var projectDir = that._getProjectDir(sourceKey);
-                return that.projectLoader.clearProjectConfig(projectDir);
+            return that.loadTileSourceProvider(params);
+        }).then(function(provider) {
+            var eventManager = that._getEventManager();
+            var eventName = 'clearTileSourceProvider:clearCache';
+            eventManager.fire(eventName, {
+                eventName : eventName,
+                arguments : [ params ],
+                provider : provider
             });
+            return provider.clear(params).then(function() {
+                return provider.close(params);
+            });
+        }).then(function() {
+            var cacheKey = that._getCacheKey(params);
+            that.sourceCache.del(cacheKey);
+        }, function(err) {
+            var cacheKey = that._getCacheKey(params);
+            that.sourceCache.del(cacheKey);
+            throw err;
         });
     },
 
     /* ---------------------------------------------------------------------- */
-
-    _getTileFormats : function() {
-        // TODO: check that it is all possible formats
-        var formats = [ 'png', 'pbf', 'vtile', 'grid.json' ];
-        return formats;
-    },
-
-    _getTileFormat : function(params) {
-        return params.format || 'png';
-    },
 
     _getSourceKey : function(params) {
         return params.source || '';
@@ -558,9 +523,8 @@ _.extend(TileSourceManager.prototype, Commons.Events, {
      * An internal method returning a cache key for the source defined in the
      * parameters.
      */
-    _getCacheKey : function(params, format) {
+    _getCacheKey : function(params) {
         var key = this._getSourceKey(params);
-        key += '-' + format;
         return key;
     },
 
@@ -573,13 +537,6 @@ _.extend(TileSourceManager.prototype, Commons.Events, {
         return this.options.tileSourceCacheTTL || 60 * 60 * 1000;
     },
 
-    _loadProjectConfig : function(params) {
-        var that = this;
-        var sourceKey = that._getSourceKey(params);
-        var projectDir = that._getProjectDir(sourceKey);
-        return that.projectLoader.loadProjectConfig(projectDir);
-    },
-
     _getProjectDir : function(sourceKey) {
         var dir = this.options.dir || this.options.styleDir || __dirname;
         dir = Path.join(dir, sourceKey);
@@ -587,25 +544,7 @@ _.extend(TileSourceManager.prototype, Commons.Events, {
         return dir;
     },
 
-    _getTileSourceProvider : function(cacheKey, params) {
-        var that = this;
-        var promiseKey = cacheKey;
-        var index = that._sourceLoadingIndex || {};
-        that._sourceLoadingIndex = index;
-        var promise = index[promiseKey];
-        if (!promise) {
-            promise = index[promiseKey] = P().then(function() {
-                return that._loadProjectConfig(params);
-            }).then(function(config) {
-                return that._newTileSourceProvider(config, params);
-            }).fin(function() {
-                delete index[promiseKey];
-            });
-        }
-        return promise;
-    },
-
-    _newTileSourceProvider : function(info, params) {
+    _newTileSourceProvider : function(params) {
         var that = this;
         var sourceKey = that._getSourceKey(params);
         var projectDir = that._getProjectDir(sourceKey);
@@ -613,8 +552,9 @@ _.extend(TileSourceManager.prototype, Commons.Events, {
             sourceKey : sourceKey,
             projectDir : projectDir,
             eventManager : that._getEventManager(),
-            sourceManager : that
-        }, info));
+            sourceManager : that,
+            projectLoader : that.projectLoader
+        }));
     },
 
     _deleteTileSourceProvider : function(provider) {
