@@ -1,6 +1,34 @@
 var _ = require('underscore');
-var P = require('q');
+// var P = require('q');
+var P = require('when');
 var FS = require('fs');
+var Path = require('path');
+
+function array_slice(array, count) {
+    return Array.prototype.slice.call(array, count);
+}
+P.nresolver = function(deferred) {
+    return function(error, value) {
+        if (error) {
+            deferred.reject(error);
+        } else if (arguments.length > 2) {
+            deferred.resolve(array_slice(arguments, 1));
+        } else {
+            deferred.resolve(value);
+        }
+    };
+}
+P.ninvoke = P.ninvoke || function(object, name /* ...args */) {
+    var nodeArgs = array_slice(arguments, 2);
+    var deferred = P.defer();
+    nodeArgs.push(P.nresolver(deferred));
+    try {
+        object[name].apply(object, nodeArgs);
+    } catch (e) {
+        deferred.reject(e);
+    }
+    return deferred.promise;
+};
 
 var Events = {
 
@@ -109,7 +137,7 @@ var IO = {
     deleteFile : function(file) {
         if (!FS.existsSync(file))
             return P(true);
-        return P.nfcall(FS.unlink, file).then(function() {
+        return P.ninvoke(FS, 'unlink', file).then(function() {
             return true;
         }, function(err) {
             // File does not exist anymore.
@@ -117,6 +145,24 @@ var IO = {
                 return true;
             throw err;
         });
+    },
+
+    mkdirs : function(dir) {
+        var promise = P();
+        if (!FS.existsSync(dir)) {
+            promise = promise.then(function() {
+                var segments = dir.split('/');
+                var p = '';
+                _.each(segments, function(segment) {
+                    p = (p == '' && segment == '') ? '/' : Path
+                            .join(p, segment);
+                    if (!FS.existsSync(p)) {
+                        FS.mkdirSync(p);
+                    }
+                });
+            })
+        }
+        return promise;
     }
 
 }
