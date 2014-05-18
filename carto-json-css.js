@@ -22,15 +22,14 @@
             var that = this;
             _.each(css, function(value, key) {
                 if (_.isObject(value)) {
-                    if (key.indexOf('[') >= 0) {
-                        result += shift + prefix + key + ' {\n'
-                        result += that
-                                ._serializeValues(shift + '  ', '', value);
-                        result += shift + '}\n';
-                    } else {
-                        result += that
-                                ._serializeValues(shift, key + '/', value);
-                    }
+                    // if (key.indexOf('[') >= 0) {
+                    result += shift + prefix + key + ' {\n'
+                    result += that._serializeValues(shift + '  ', '', value);
+                    result += shift + '}\n';
+                    // } else {
+                    // result += that
+                    // ._serializeValues(shift, key + '/', value);
+                    // }
                 } else {
                     result += shift + prefix + key + ': ' + value + ';\n';
                 }
