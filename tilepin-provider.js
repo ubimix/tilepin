@@ -321,6 +321,7 @@ _.extend(TileSourceProvider.prototype, {
                                 params, uri);
                         if (!vectorTilesParams)
                             return uri;
+
                         var manager = that.options.sourceManager;
                         var prm = vectorTilesParams;
                         return manager.loadTileSourceProvider(prm).then(
@@ -341,7 +342,9 @@ _.extend(TileSourceProvider.prototype, {
     },
 
     _getVectorTilesParams : function(params, uri) {
-        var properties = uri.properties || {};
+        var that = this;
+        var config = that._getConfig();
+        var properties = config.properties || {};
         var result = null;
         var source = properties.source || '';
         if (source == '') {
@@ -493,7 +496,7 @@ _.extend(TileSourceManager.prototype, Commons.Events, {
             });
             that.sourceCache.set(cacheKey, provider);
             return provider;
-        }).then(function(provider){
+        }).then(function(provider) {
             return provider.open();
         });
     },
