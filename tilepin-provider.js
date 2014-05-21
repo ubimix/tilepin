@@ -119,7 +119,7 @@ _.extend(TileSourceProvider.prototype, {
                     return projectLoader.loadProjectConfig(projectDir)//
                     .then(
                             function(configInfo) {
-                                that.configInfo = configInfo;
+                                that.configInfo = configInfo || {};
                                 return projectLoader.processProjectConfig(
                                         projectDir, configInfo);
                             }).then(function() {
@@ -144,7 +144,8 @@ _.extend(TileSourceProvider.prototype, {
     },
 
     _getConfig : function(deepCopy) {
-        var config = this.configInfo.config;
+        var configInfo = this.configInfo || {};
+        var config = configInfo.config || {};
         if (deepCopy === true) {
             config = JSON.parse(JSON.stringify(config));
         }
@@ -153,14 +154,8 @@ _.extend(TileSourceProvider.prototype, {
 
     _getCacheId : function(params) {
         var sourceKey = this._getSourceKey();
-        var suffix = '';
-        if (this.isDynamicSource(params)) {
-            var script = this._getQueryScript();
-            if (script && _.isFunction(script.getId)) {
-                suffix = script.getId(params);
-            }
-        }
-        if (suffix && suffix != '') {
+        var suffix = this._getCacheParams(params);
+        if (suffix != '') {
             suffix = '-' + suffix;
         } else {
             suffix = '';
@@ -169,6 +164,21 @@ _.extend(TileSourceProvider.prototype, {
         var id = sourceKey + type + suffix;
         id = require('crypto').createHash('sha1').update(id).digest('hex')
         return id;
+    },
+
+    _getCacheParams : function(params) {
+        // if (this.isDynamicSource(params)) {
+        var result = '';
+        var script = this._getQueryScript();
+        if (script && _.isFunction(script.getId)) {
+            result = script.getId(params);
+        }
+        // }
+        if (!result) {
+            result = '';
+        }
+        return result;
+
     },
 
     _getQueryScriptPath : function() {
