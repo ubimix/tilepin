@@ -85,14 +85,28 @@ Styles._fib = function(pos) {
     return array[pos];
 }
 // Fibonacci sequence
-Styles.fib = function(f) {
+Styles.fibInc = Styles.fib = function(f) {
     return function(zoom, fromZoom, toZoom) {
         var val = Styles._fib(Math.abs(zoom - fromZoom));
         return f(zoom, val, fromZoom, toZoom);
     }
 }
 
-Styles.exp = function(n, f) {
+Styles.fibDec = function(f) {
+    return function(zoom, fromZoom, toZoom) {
+        var val = Styles._fib(Math.abs(toZoom - zoom));
+        return f(zoom, val, fromZoom, toZoom);
+    }
+}
+
+Styles.expInc = Styles.exp = function(n, f) {
+    return function(zoom, fromZoom, toZoom) {
+        var val = Math.pow(n, Math.abs(zoom - fromZoom));
+        return f(zoom, val, fromZoom, toZoom);
+    }
+}
+
+Styles.expDec = function(n, f) {
     return function(zoom, fromZoom, toZoom) {
         var val = Math.pow(n, Math.abs(toZoom - zoom));
         return f(zoom, val, fromZoom, toZoom);
