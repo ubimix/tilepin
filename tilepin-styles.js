@@ -50,7 +50,7 @@ function Styles(values) {
     }
     return styles;
 }
-Styles._seq = function(fromVal, toVal, f, getk) {
+Styles._linear = function(fromVal, toVal, f, getk) {
     return function(zoom, fromZoom, toZoom) {
         var val;
         if (fromZoom == toZoom) {
@@ -64,14 +64,14 @@ Styles._seq = function(fromVal, toVal, f, getk) {
 }
 
 // Linear increasing changes
-Styles.linear = Styles.inc = function(fromVal, toVal, f) {
-    return Styles._seq(fromVal, toVal, f, function(zoom, fromZoom, toZoom) {
+Styles.linear = Styles.linearInc = Styles.inc = function(fromVal, toVal, f) {
+    return Styles._linear(fromVal, toVal, f, function(zoom, fromZoom, toZoom) {
         return (zoom - fromZoom) / (toZoom - fromZoom);
     })
 }
 // Linear decreasing changes
-Styles.dec = function(fromVal, toVal, f) {
-    return Styles._seq(fromVal, toVal, f, function(zoom, fromZoom, toZoom) {
+Styles.linearDec = Styles.dec = function(fromVal, toVal, f) {
+    return Styles._linear(fromVal, toVal, f, function(zoom, fromZoom, toZoom) {
         return (toZoom - zoom) / (toZoom - fromZoom);
     })
 }
