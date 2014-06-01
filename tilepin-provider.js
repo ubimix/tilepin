@@ -194,19 +194,22 @@ _.extend(TileSourceProvider.prototype, {
 
     _unloadQueryScript : function() {
         var that = this;
-        var path = this._getQueryScriptPath();
+        var path = that._getQueryScriptPath();
         if (!path)
             return;
+        delete that._queryScript;
         return Commons.IO.clearObject(path);
     },
 
     _getQueryScript : function() {
         var that = this;
+        if (that._queryScript)
+            return that._queryScript;
         var path = that._getQueryScriptPath();
         if (!path)
             return;
-        var obj = Commons.IO.loadObject(path);
-        return obj;
+        that._queryScript = Commons.IO.loadObject(path);
+        return that._queryScript;
     },
 
     _isRemoteSource : function() {
@@ -288,6 +291,14 @@ _.extend(TileSourceProvider.prototype, {
         // Deep copy of the config
         var config = that._getConfig(true);
         return P().then(function() {
+            var script = that._getQueryScript();
+            if (script && !_.isFunction(script.prepareConfig)) {
+                return script.prepareConfig({
+                    config : config,
+                    params : params
+                });
+            }
+        }).then(function() {
             if (!config.Layer || !config.Layer.length)
                 return;
             return that._getProcessingHandlers().then(function(handlers) {
