@@ -292,7 +292,7 @@ _.extend(TileSourceProvider.prototype, {
         var config = that._getConfig(true);
         return P().then(function() {
             var script = that._getQueryScript();
-            if (script && !_.isFunction(script.prepareConfig)) {
+            if (script && _.isFunction(script.prepareConfig)) {
                 return script.prepareConfig({
                     config : config,
                     params : params
