@@ -81,7 +81,7 @@ _.extend(TilesProvider.prototype, Commons.Events, {
         }
         return that.tileSourceManager.loadTileSourceProvider(params).then(
                 function(provider) {
-                    // TODO: replace it by the caching timeout
+                    // TODO: replace it by caching timeout
                     if (!provider.isDynamicSource()) {
                         return loadCached(provider, params);
                     } else {

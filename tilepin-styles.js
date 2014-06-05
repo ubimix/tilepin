@@ -63,6 +63,13 @@ Styles._linear = function(fromVal, toVal, f, getk) {
     }
 }
 
+function max(zoom, fromZoom, toZoom) {
+    return Math.abs(Math.max(fromZoom, toZoom) - zoom);
+}
+function min(zoom, fromZoom, toZoom) {
+    return Math.abs(Math.min(fromZoom, toZoom) - zoom);
+}
+
 // Linear increasing changes
 Styles.linear = Styles.linearInc = Styles.inc = function(fromVal, toVal, f) {
     return Styles._linear(fromVal, toVal, f, function(zoom, fromZoom, toZoom) {
@@ -84,31 +91,32 @@ Styles._fib = function(pos) {
     }
     return array[pos];
 }
+
 // Fibonacci sequence
 Styles.fibInc = Styles.fib = function(f) {
     return function(zoom, fromZoom, toZoom) {
-        var val = Styles._fib(Math.abs(zoom - fromZoom));
+        var val = Styles._fib(min(zoom, fromZoom, toZoom));
         return f(zoom, val, fromZoom, toZoom);
     }
 }
 
 Styles.fibDec = function(f) {
     return function(zoom, fromZoom, toZoom) {
-        var val = Styles._fib(Math.abs(toZoom - zoom));
+        var val = Styles._fib(max(zoom, fromZoom, toZoom));
         return f(zoom, val, fromZoom, toZoom);
     }
 }
 
 Styles.expInc = Styles.exp = function(n, f) {
     return function(zoom, fromZoom, toZoom) {
-        var val = Math.pow(n, Math.abs(zoom - fromZoom));
+        var val = Math.pow(n, max(zoom, fromZoom, toZoom));
         return f(zoom, val, fromZoom, toZoom);
     }
 }
 
 Styles.expDec = function(n, f) {
     return function(zoom, fromZoom, toZoom) {
-        var val = Math.pow(n, Math.abs(toZoom - zoom));
+        var val = Math.pow(n, min(zoom, fromZoom, toZoom));
         return f(zoom, val, fromZoom, toZoom);
     }
 }
