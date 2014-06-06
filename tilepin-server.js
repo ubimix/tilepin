@@ -227,13 +227,13 @@ function sendReply(req, res, statusCode, content, headers) {
         callback = null;
     if (callback) {
         if (headers) {
-            headers['Content-Type'] = 'application/javascript';
+            headers['Content-Type'] = 'application/javascript; charset=utf-8';
         }
         var str;
         if (Buffer.isBuffer(content)) {
             str = content.toString();
         } else {
-            str = JSON.stringify(content);
+            str = JSON.stringify(content, null, 2);
         }
         content = callback + '(' + str + ');'
     }

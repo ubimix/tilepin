@@ -124,6 +124,28 @@ _.extend(TilesProvider.prototype, Commons.Events, {
     _forceTileInvalidation : function(params) {
         return !!params.reload;
     },
+    _prepareUtfGrid : function(tile) {
+        _.each(tile.data, function(obj) {
+            _.each(_.keys(obj), function(key) {
+                var value = obj[key];
+                if (_.isString(value)) {
+                    obj[key] = value.replace(/\s/gim, function(match) {
+                        if (match == '\n' || match == '\r' || match == ' ')
+                            return match;
+                        return ' ';
+                    });
+                }
+            })
+            if (_.isString(obj.properties) && obj.properties[0] == '{') {
+                try {
+                    obj.properties = JSON.parse(obj.properties);
+                } catch (e) {
+                    console.log(e.stack)
+                }
+            }
+        })
+        return tile;
+    },
     _readTile : function(tileSource, params) {
         var deferred = P.defer();
         try {
@@ -132,10 +154,14 @@ _.extend(TilesProvider.prototype, Commons.Events, {
             var x = +params.x;
             var y = +params.y;
             var fn = format === 'grid.json' ? 'getGrid' : 'getTile';
+            var that = this;
             tileSource[fn](z, x, y, function(err, tile, headers) {
                 if (err) {
                     deferred.reject(err);
                 } else {
+                    if (format === 'grid.json') {
+                        tile = that._prepareUtfGrid(tile);
+                    }
                     deferred.resolve({
                         tile : tile,
                         headers : headers
