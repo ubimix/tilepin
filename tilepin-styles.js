@@ -17,6 +17,10 @@ function Styles(values) {
         })
         return result;
     }
+    styles.clone = function() {
+        var newValues = JSON.parse(JSON.stringify(values));
+        return Styles(newValues);
+    }
     styles.add = function() {
         var args = [ values ].concat(_.toArray(arguments));
         values = styles.apply(styles, args);
