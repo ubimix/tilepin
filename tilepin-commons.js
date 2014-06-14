@@ -3,6 +3,7 @@ var _ = require('underscore');
 var P = require('when');
 var FS = require('fs');
 var Path = require('path');
+var Yaml = require('js-yaml');
 
 function array_slice(array, count) {
     return Array.prototype.slice.call(array, count);
@@ -23,7 +24,8 @@ P.ninvoke = P.ninvoke || function(object, name /* ...args */) {
     var deferred = P.defer();
     nodeArgs.push(P.nresolver(deferred));
     try {
-        object[name].apply(object, nodeArgs);
+        var f = _.isFunction(name) ? name : object[name];
+        f.apply(object, nodeArgs);
     } catch (e) {
         deferred.reject(e);
     }
@@ -145,6 +147,26 @@ var IO = {
         return IO.writeString(file, str);
     },
 
+    /** Reads a Yaml object from the specified file. */
+    readYaml : function(file) {
+        return IO.readString(file).then(function(str) {
+            try {
+                return Yaml.load(str, {
+                    schema : Yaml.JSON_SCHEMA
+                });
+            } catch (e) {
+                return {};
+            }
+        });
+    },
+
+    /** Writes a Yaml object in the specified file. */
+    writeYaml : function(file, json) {
+        json = json || {};
+        var str = Yaml.safeDump(json);
+        return IO.writeString(file, str);
+    },
+
     deleteFile : function(file) {
         if (!FS.existsSync(file))
             return P(true);
@@ -174,6 +196,24 @@ var IO = {
             })
         }
         return promise;
+    },
+
+    visit : function visit(file, visitor) {
+        return P.ninvoke(FS, 'stat', file).then(function(stat) {
+            var directory = !!stat && stat.isDirectory();
+            return P().then(function() {
+                return visitor(file, directory);
+            }).then(function(result) {
+                if (result === false || !directory)
+                    return;
+                return P.ninvoke(FS, 'readdir', file).then(function(list) {
+                    return P.all(_.map(list, function(f) {
+                        var child = Path.join(file, f);
+                        return visit(child, visitor);
+                    }));
+                });
+            })
+        })
     }
 
 }
