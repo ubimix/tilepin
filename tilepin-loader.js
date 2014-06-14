@@ -167,49 +167,29 @@ _.extend(ProjectLoader.prototype, Commons.Events, {
         }));
     },
 
-    _readProjectFile : (function() {
-        var TYPES = [ {
-            name : 'project.yml',
-            parse : function(str) {
-                var obj = Yaml.load(str);
-                return obj;
-            }
-        }, {
-            name : 'project.mml',
-            parse : function(str) {
-                return JSON.parse(str);
-            },
-        } ];
-        return function(dir) {
-            return P().then(function() {
-                var fileInfo = null;
-                var file = null;
-                _.find(TYPES, function(info) {
-                    var path = Path.join(dir, info.name);
-                    if (FS.existsSync(path)) {
-                        fileInfo = info;
-                        file = path;
-                    }
-                    return !!fileInfo;
-                })
-                if (!fileInfo) {
-                    var msg = 'Project file not found (';
-                    msg += _.map(TYPES, function(info) {
-                        return info.name;
-                    }).join(' / ');
-                    msg += '). Dir: "' + dir + '".';
-                    throw new Error(msg);
-                }
-                return Commons.IO.readString(file).then(function(data) {
-                    var obj = fileInfo.parse(data);
-                    return {
-                        pathname : file,
-                        config : obj
-                    }
-                });
+    _readProjectFile : function(dir) {
+        var names = [ 'project.yml', 'project.mml' ];
+        return P().then(function() {
+            var path = _.find(_.map(names, function(name) {
+                return Path.join(dir, name);
+            }), function(path) {
+                return FS.existsSync(path);
             });
-        }
-    })(),
+            if (!path) {
+                var msg = 'Project file not found (';
+                msg += names.join(' / ');
+                msg += '). Dir: "' + dir + '".';
+                throw new Error(msg);
+            }
+            return Commons.IO.readString(path).then(function(str) {
+                var obj = Yaml.load(str);
+                return {
+                    pathname : path,
+                    config : obj
+                }
+            });
+        });
+    },
 
     _processDataSources : function(projectDir, config) {
         var that = this
