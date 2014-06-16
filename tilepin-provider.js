@@ -8,6 +8,7 @@ var Url = require('url');
 var FS = require('fs');
 var Crypto = require('crypto');
 var Http = require('http');
+var Zlib = require('zlib');
 
 var Commons = require('./tilepin-commons');
 var P = Commons.P;
@@ -26,6 +27,97 @@ _.each(extensions, function(extension) {
 
 var ProjectLoader = require('./tilepin-loader');
 
+function CompositeTileSource(tileSources, interactiveLayer) {
+    this.tileSources = _.filter(tileSources, function(source) {
+        var result = source != null;
+        return result;
+    });
+    this.interactiveLayer = interactiveLayer;
+}
+_.extend(CompositeTileSource.prototype, {
+    getTile : function(z, x, y, callback) {
+        var that = this;
+        P.all(_.map(that.tileSources, function(tileSource) {
+            var deferred = P.defer();
+            // console.log(' * BGN [' + z + ',' + x + ',' + y + ']',
+            // tileSource.sourceKey);
+            tileSource.getTile(z, x, y, function(err, tile, meta) {
+                if (err == 'Error: Tile does not exist') {
+                    tile = new Buffer([]);
+                    meta = {
+                        'Content-Type' : 'application/x-protobuf'
+                    };
+                    err = undefined;
+                }
+                if (err) {
+                    // console.log(' * ERR [' + z + ',' + x + ',' + y
+                    // + ']', tileSource.sourceKey, err);
+                    deferred.reject(err);
+                } else {
+                    // console.log(' * END [' + z + ',' + x + ',' + y
+                    // + ']', tileSource.sourceKey, 'LEN: ['
+                    // + tile.length + ']', meta);
+                    deferred.resolve({
+                        tile : tile,
+                        meta : meta
+                    })
+                }
+            });
+            return deferred.promise;
+        }))
+        //
+        .then(function(tiles) {
+            // Unzip all tiles
+            return P.all(_.map(tiles, function(tile) {
+                var meta = tile.meta;
+                if (meta['Content-Encoding'] == 'deflate') {
+                    return P.ninvoke(Zlib, 'inflate', tile.tile);
+                }
+                return tile.tile;
+            }))
+            // Concat and re-zip all tiles
+            .then(function(tiles) {
+                var buf = Buffer.concat(tiles);
+                return P.ninvoke(Zlib, 'deflate', buf);
+            });
+        })
+        // Return the final tile
+        .then(function(tile) {
+            callback(null, tile, {
+                'Content-Type' : 'application/x-protobuf',
+                'Content-Encoding' : 'deflate'
+            });
+        }, function(err) {
+            callback(err);
+        });
+    },
+    getGrid : function(z, x, y, callback) {
+        var that = this;
+        var tileSource = _.find(that.tileSources, function(tileSource) {
+            return that.interactiveLayer == tileSource.name;
+        });
+        if (!tileSource) {
+            callback(new Error('No interactive layer'));
+        } else {
+            tileSource.getGrid(z, x, y, callback);
+        }
+    },
+    getInfo : function(callback) {
+        var that = this;
+        P.all(_.map(that.tileSources, function(tileSource) {
+            return P.ninvoke(tileSource, 'getInfo');
+        })).then(function(list) {
+            var result = {};
+            _.each(list, function(info) {
+                _.extend(result, info);
+            })
+            callback(null, result);
+        }, function(err) {
+            callback(err);
+        })
+    }
+});
+
 /* -------------------------------------------------------------------------- */
 /**
  * Objects of this type provide access to individual projects and they are used
@@ -43,7 +135,6 @@ _.extend(TileSourceProvider.prototype, {
         var id = that._getCacheId(params);
         // FIXME: add expiration of individual requests
         var promise = that._promises.get(id);
-        // console.log(' * ', this._getSourceKey(), id, promise);
         if (!promise) {
             promise = that._loadMapnikConfig(params, id) // 
             .then(function(uri) {
@@ -94,17 +185,17 @@ _.extend(TileSourceProvider.prototype, {
 
     clear : function(params) {
         var dir = this._getMapnikConfigDir();
-        return P.ninvoke(FS, 'readdir', dir).then(
-                function(array) {
-                    return P.all(_.map(array, function(name) {
-                        if (name.indexOf('project.tilepin.') == 0
-                                && name.lastIndexOf('.xml') == name.length
-                                        - '.xml'.length) {
-                            var file = Path.join(dir, name);
-                            return Commons.IO.deleteFile(file);
-                        }
-                    }));
-                })
+        return P.ninvoke(FS, 'readdir', dir).then(function(array) {
+            return P.all(_.map(array, function(name) {
+                if (!name.indexOf('project.tilepin.') == 0)
+                    return;
+                var ext = Path.extname(name);
+                if (ext == '.xml' || ext == '.json') {
+                    var file = Path.join(dir, name);
+                    return Commons.IO.deleteFile(file);
+                }
+            }));
+        })
     },
 
     open : function() {
@@ -160,7 +251,7 @@ _.extend(TileSourceProvider.prototype, {
         } else {
             suffix = '';
         }
-        var type = this._isVectorSourceType(params) ? '-a' : '-b';
+        var type = this._isVectorTileRequested(params) ? '-a' : '-b';
         var id = sourceKey + type + suffix;
         id = require('crypto').createHash('sha1').update(id).digest('hex')
         return id;
@@ -217,7 +308,7 @@ _.extend(TileSourceProvider.prototype, {
         return source.indexOf(':') > 0;
     },
 
-    _isVectorSourceType : function(params) {
+    _isVectorTileRequested : function(params) {
         var format = params.format || 'png';
         return format == 'vtile' || format == 'pbf'
     },
@@ -226,40 +317,74 @@ _.extend(TileSourceProvider.prototype, {
         var dir = this._getProjectDir();
         return dir;
     },
-    _getMapnikConfigFile : function(id) {
+    _getMapnikConfigFileBase : function(id) {
         var dir = this._getMapnikConfigDir();
-        var name = 'project.tilepin.' + id.substring(0, 12) + '.xml';
+        var name = 'project.tilepin.' + id.substring(0, 12);
         return Path.join(dir, name);
     },
+
     _loadMapnikConfig : function(params, id) {
         var that = this;
-        var configFile = that._getMapnikConfigFile(id);
-        var dir = Path.dirname(configFile);
+        var configFileBase = that._getMapnikConfigFileBase(id);
+        var config;
 
-        return P().then(function() {
-            if (FS.existsSync(configFile)) {
-                return Commons.IO.readString(configFile);
-            }
-            return P().then(function() {
+        var configFileDir = this._getMapnikConfigDir();
+        var configFile = configFileBase + '.xml';
+        var jsonLoader = {
+            field : 'config',
+            file : configFileBase + '.json',
+            content : null,
+            load : function() {
+                return Commons.IO.readJson(this.file);
+            },
+            build : function() {
                 return that._getProcessedConfig(params);
-            }).then(function(config) {
+            },
+            save : function() {
+                return Commons.IO.writeJson(this.file, this.content);
+            }
+        };
+        var xmlLoader = {
+            field : 'xml',
+            file : configFile,
+            content : null,
+            load : function() {
+                return Commons.IO.readString(this.file);
+            },
+            build : function() {
                 var renderer = new Carto.Renderer({
-                    filename : configFile,
-                    local_data_dir : dir,
+                    filename : this.file,
+                    local_data_dir : configFileDir,
                 });
-                return P.ninvoke(renderer, 'render', config);
-            }).then(function(xml) {
-                return Commons.IO.writeString(configFile, xml).then(function() {
-                    return xml;
-                })
-            });
-        }).then(function(xml) {
+                return P.ninvoke(renderer, 'render', jsonLoader.content);
+            },
+            save : function() {
+                return Commons.IO.writeString(this.file, this.content);
+            }
+        }
+        var promise = P();
+        _.each([ jsonLoader, xmlLoader ], function(loader) {
+            promise = promise.then(function() {
+                var file = loader.file;
+                if (FS.existsSync(file)) {
+                    return loader.load().then(function(content) {
+                        loader.content = content;
+                    });
+                }
+                return loader.build().then(function(content) {
+                    loader.content = content;
+                    return loader.save(loader.content);
+                });
+            })
+        });
+        return promise.then(function() {
             return {
-                base : dir,
+                base : configFileDir,
                 pathname : configFile,
                 path : configFile,
+                xml : xmlLoader.content,
+                config : jsonLoader.content,
                 protocol : 'mapnik:',
-                xml : xml
             };
         });
     },
@@ -328,7 +453,7 @@ _.extend(TileSourceProvider.prototype, {
         var that = this;
         return P().then(
                 function() {
-                    if (that._isVectorSourceType(params)
+                    if (that._isVectorTileRequested(params)
                             && !that._isRemoteSource(params)) {
                         // Generate vector tiles using existing tilemill
                         // projects
@@ -340,42 +465,52 @@ _.extend(TileSourceProvider.prototype, {
                         // Generate image from vector tile sources
                         var vectorTilesParams = that._getVectorTilesParams(
                                 params, uri);
-                        if (!vectorTilesParams)
+                        if (!vectorTilesParams || !vectorTilesParams.length)
                             return uri;
 
                         var manager = that.options.sourceManager;
-                        var prm = vectorTilesParams;
-                        return manager.loadTileSourceProvider(prm).then(
-                                function(provider) {
-                                    return provider.prepareTileSource(prm);
-                                }).then(function(vtileSource) {
-                            uri = _.extend({}, uri, {
-                                protocol : 'vector:',
-                                source : {
-                                    protocol : 'tilepin:',
-                                    source : vtileSource
-                                }
+                        return P.all(_.map(vectorTilesParams, function(prm) {
+                            return manager.loadTileSourceProvider(prm) //
+                            .then(function(provider) {
+                                return provider.prepareTileSource(prm) //
+                                .then(function(tileSource) {
+                                    tileSource.sourceKey = prm.source;
+                                    return tileSource;
+                                });
                             });
-                            return uri;
-                        });
+                        })).then(
+                                function(tileSources) {
+                                    var tileSource = new CompositeTileSource(
+                                            tileSources);
+                                    uri = _.extend({}, uri, {
+                                        protocol : 'vector:',
+                                        source : {
+                                            protocol : 'tilepin:',
+                                            source : tileSource
+                                        }
+                                    });
+                                    return uri;
+                                });
                     }
                 });
     },
 
     _getVectorTilesParams : function(params, uri) {
+        var result = [];
         var that = this;
         var config = that._getConfig();
-        var properties = config.properties || {};
-        var result = null;
-        var source = properties.source || '';
-        if (source == '') {
-            source = (properties.useVectorTiles ? this._getSourceKey() : null);
-        }
-        if (source && source != '') {
-            result = _.extend({}, params, {
-                source : source,
-                format : 'vtile'
-            });
+        if (config.useVectorTiles) {
+            var prefix = config.dataSourcePrefix || that._getSourceKey();
+            _.each(config.Layer, function(layer) {
+                var source = Path.join(prefix, layer.name);
+                if (source && source != '') {
+                    var vectorSourceParams = _.extend({}, params, {
+                        source : source,
+                        format : 'vtile'
+                    });
+                    result.push(vectorSourceParams);
+                }
+            })
         }
         return result;
     },
@@ -392,6 +527,8 @@ _.extend(TileSourceProvider.prototype, {
     _closeTileSource : function(promise) {
         var that = this;
         return promise.then(function(tileSource) {
+            if (!tileSource)
+                return;
             var eventManager = that._getEventManager();
             if (eventManager) {
                 eventManager.fire('TileSourceProvider:clearTileSource', {
@@ -432,11 +569,13 @@ _.extend(TileSourceProvider.prototype, {
     },
 
     _wrapTileSource : function(tileSource, params) {
+        if (!tileSource)
+            return null;
         var that = this;
         var eventManager = that._getEventManager();
         if (eventManager) {
             var methods = _.map([ 'getTile', 'getGrid', 'getInfo' ], function(
-                    name) {
+                name) {
                 return {
                     eventName : name,
                     methodName : name,
