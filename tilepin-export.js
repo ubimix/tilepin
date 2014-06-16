@@ -7,7 +7,6 @@ var _ = require('underscore');
 
 var mercator = new (require('sphericalmercator'));
 var mapnik = require('mapnik');
-var TileMillProjectLoader = require('./tilepin-loader');
 
 module.exports = MapExport;
 
@@ -16,8 +15,7 @@ module.exports = MapExport;
  */
 function MapExport(options) {
     this.options = options || {};
-    this.projectLoader = this.options.projectLoader
-            || new TileMillProjectLoader(this.options);
+    this.projectLoader = this.options.projectLoader;
     this.fileDir = this.options.tmpDir || './tmp';
     if (!FS.existsSync(this.fileDir)) {
         FS.mkdirSync(this.fileDir);
@@ -32,7 +30,7 @@ _.extend(MapExport.prototype, {
             var zoom = params.zoom;
             var fileDir = that.fileDir;
             var fileName = fileName;
-            var scale = 1.0;
+            var scale = params.scale || 1.0;
             var w = Math.min(params.west, params.east);
             var s = Math.min(params.north, params.south);
             var e = Math.max(params.west, params.east);
