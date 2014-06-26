@@ -31,6 +31,19 @@ P.ninvoke = P.ninvoke || function(object, name /* ...args */) {
     }
     return deferred.promise;
 };
+/**
+ * Executes a specified method when the given promise completes (with a failure
+ * or with a success).
+ */
+P.fin = function(promise, method) {
+    return promise.then(function(result) {
+        method();
+        return result;
+    }, function(err) {
+        method();
+        throw err;
+    })
+}
 
 var Events = {
 

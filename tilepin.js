@@ -125,6 +125,15 @@ _.extend(TilesProvider.prototype, Commons.Events, {
         return !!params.reload;
     },
     _prepareUtfGrid : function(tile) {
+        function toObject(value){
+            if (_.isString(value) && value[0] == '{') {
+                try {
+                    value = JSON.parse(value);
+                } catch (e) {
+                }
+            }
+            return value;
+        }
         _.each(tile.data, function(obj) {
             _.each(_.keys(obj), function(key) {
                 var value = obj[key];
@@ -136,13 +145,8 @@ _.extend(TilesProvider.prototype, Commons.Events, {
                     });
                 }
             })
-            if (_.isString(obj.properties) && obj.properties[0] == '{') {
-                try {
-                    obj.properties = JSON.parse(obj.properties);
-                } catch (e) {
-                    console.log(e.stack)
-                }
-            }
+            obj.properties = toObject(obj.properties);
+            obj.geometry = toObject(obj.geometry);
         })
         return tile;
     },
