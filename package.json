@@ -1,7 +1,7 @@
 {
     "name" : "tilepin",
     "version" : "0.1.0",
-    "main" : "tilepin.js",
+    "main" : "./lib/index.js",
     "description" : "Tilepin caching server",
     "url" : "http://github.com/ubimix/tilepin",
     "keywords" : [ "map", "server", "mapnik" ],
@@ -17,22 +17,20 @@
         "email" : "mikhail.kotelnikov"
     } ],
     "dependencies" : {
-        "underscore" : "*",
+        "adm-zip" : "*",
+        "carto" : "~0.11.0",
         "express" : "*",
-        "tilelive" : "*",
-        "tilelive-mapnik" : "*",
-        "tilelive-vector" : "*",
-        "tilelive-bridge" : "*",
-        "tilejson" : "*",
-        "sphericalmercator": "~1.0.2",
-        "carto" : "~0.9.6",
-        "js-yaml": "~3.0.2",
-        "mapnik": ">=0.7.25 && <1.5.0",
-        "when" : "*",
-        "lru-cache" : "*",
-        "redis" : "*",
+        "generic-pool" : "~2.1.0",
         "hiredis" : "*",
-        "adm-zip" : "*"
+        "js-yaml" : "~3.0.2",
+        "lru-cache" : "*",
+        "mapnik" : ">=0.7.25 && <1.5.0",
+        "millstone" : "~0.6.14",
+        "redis" : "*",
+        "sphericalmercator" : "~1.0.2",
+        "tilejson" : "*",
+        "underscore" : "~1.4.4",
+        "when" : "*"
     },
     "devDependencies" : {
         "mocha" : "*",
@@ -44,7 +42,7 @@
         "node" : ">= 0.6.13 < 0.11.0"
     },
     "scripts" : {
-        "test" : "mocha -R spec --timeout 10000 ./tests/Test*"
+        "test" : "mocha -R spec --timeout 10000 ./tests/*.test.js"
     },
     "readme" : "# tilepin\n\nCaching backend for [tilelive.js](http://github.com/mapbox/tilelive.js)\n",
     "readmeFilename" : "README.md",
