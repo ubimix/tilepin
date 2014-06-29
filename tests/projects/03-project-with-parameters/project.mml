@@ -1,0 +1,41 @@
+{
+  "handler" : "handler.js",
+  "Layer": [
+    {
+      "Datasource": {
+        "file": "http://www.naturalearthdata.com/http//www.naturalearthdata.com/download/110m/cultural/ne_110m_admin_0_countries.zip",
+        "type" : "shape"
+      }, 
+      "class": "", 
+      "geometry": "polygon", 
+      "id": "country-shapes-110m", 
+      "name": "country-shapes-110m",
+      "srs" : "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs +towgs84=0,0,0"
+    }
+  ], 
+  "Stylesheet": [
+    "style.mss"
+  ], 
+  "attribution": "Ubimix", 
+  "bounds": [
+    -180, 
+    -85.0511, 
+    180, 
+    85.0511
+  ], 
+  "center": [
+    0, 
+    20, 
+    4
+  ], 
+  "name": "TilePin Example", 
+  "description": "An example project for TilePin", 
+  "format": "png", 
+  "interactivity": {
+    "layer" : "country-shapes-110m",
+    "fields" : "scalerank,featurecla,labelrank,sovereignt,sov_a3,adm0_dif,level,type,admin,adm0_a3,geou_dif,geounit,gu_a3,su_dif,subunit,su_a3,brk_diff,name,name_long,brk_a3,brk_name,brk_group,abbrev,postal,formal_en,formal_fr,note_adm0,note_brk,name_sort,name_alt,mapcolor7,mapcolor8,mapcolor9,mapcolor13,pop_est,gdp_md_est,pop_year,lastcensus,gdp_year,economy,income_grp,wikipedia,fips_10,iso_a2,iso_a3,iso_n3,un_a3,wb_a2,wb_a3,woe_id,adm0_a3_is,adm0_a3_us,adm0_a3_un,adm0_a3_wb,continent,region_un,subregion,region_wb,name_len,long_len,abbrev_len,tiny,homepart"
+  }, 
+  "maxzoom": 19, 
+  "minzoom": 0, 
+  "srs": "+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0.0 +k=1.0 +units=m +nadgrids=@null +wktext +no_defs +over"
+}
