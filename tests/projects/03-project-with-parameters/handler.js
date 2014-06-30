@@ -5,7 +5,7 @@ module.exports = {
         return str.toUpperCase();
     },
     getKey : function(params) {
-        var value = this._toUpperCase(params.a);
+        var value = this._toUpperCase(params.q);
         return value;
     },
 
@@ -20,7 +20,7 @@ module.exports = {
         // options.config - project configuration
         // options.dataLayer - the current data layer to handle
         // options.project - the project instance
-        console.log(options);
-        options.dataLayer.Datasource.foo = 'Bar';
+        var params = options.params;
+        options.dataLayer.Datasource.q = this._toUpperCase(params.q);
     }
 }

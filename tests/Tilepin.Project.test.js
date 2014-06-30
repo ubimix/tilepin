@@ -99,7 +99,7 @@ describe('Tilepin.Project', function() {
                 });
                 return withProject(project, function() {
                     var params = {
-                        'a' : 'b'
+                        'q' : 'b'
                     };
                     var key = project.getCacheKey(params);
                     var str = Tilepin.Project.toKey('B');
@@ -121,17 +121,16 @@ describe('Tilepin.Project', function() {
                 });
                 return withProject(project, function() {
                     var params = {
-                        'a' : 'b'
+                        'q' : 'hello, world!'
                     };
-                    return project.prepareProjectConfig(params) //
-                    .then(
+                    var value = params.q.toUpperCase();
+                    return project.prepareProjectConfig(params).then(
                             function(xml) {
-                                console.log(xml)
                                 expect(handled).to.eql(true);
                                 // A new parameter added to the datalayer by a
                                 // project handler method
-                                var str = '<Parameter name="foo">'
-                                        + '<![CDATA[Bar]]>' + '</Parameter>';
+                                var str = '<Parameter name="q">' + '<![CDATA['
+                                        + value + ']]>' + '</Parameter>';
                                 expect(xml.indexOf(str) > 0).to.be(true);
                             });
                 })
