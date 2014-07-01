@@ -1,0 +1,41 @@
+{
+  "Layer": [
+    {
+      "Datasource": {
+        "extent": "-20037508.34 -20037508.34 20037508.34 20037508.34", 
+        "file": "layers/country-shapes-110m/ne_110m_admin_0_countries.shp", 
+        "type" : "shape"
+      }, 
+      "class": "", 
+      "geometry": "polygon", 
+      "id": "country-shapes-110m", 
+      "name": "country-shapes-110m", 
+      "srs" : "+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0.0 +k=1.0 +units=m +nadgrids=@null +wktext +no_defs +over" 
+    }
+  ], 
+  "Stylesheet": [
+    "style.mss"
+  ], 
+  "attribution": "Ubimix", 
+  "bounds": [
+    -180, 
+    -85.0511, 
+    180, 
+    85.0511
+  ], 
+  "center": [
+    0, 
+    20, 
+    4
+  ], 
+  "name": "TilePin Example", 
+  "description": "An example project for TilePin", 
+  "format": "png", 
+  "interactivity": {
+    "layer" : "country-shapes-110m",
+    "fields" : "TYPE,ADMIN,ADM0_A3,NAME,ABBREV,POSTAL"
+  }, 
+  "maxzoom": 19, 
+  "minzoom": 0, 
+  "srs": "+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0.0 +k=1.0 +units=m +nadgrids=@null +wktext +no_defs +over"
+}

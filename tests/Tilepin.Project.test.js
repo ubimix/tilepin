@@ -73,18 +73,19 @@ describe('Tilepin.Project', function() {
         return withProject(project, function() {
             return project.prepareProjectConfig(params) //
             .then(
-                    function(xml) {
-                        expect(xml).not.to.be(null);
+                    function(options) {
+                        expect(options).not.to.be(null);
+                        expect(options.xml).not.to.be(null);
+                        expect(options.config).not.to.be(null);
                         var str = '<?xml version="1.0" encoding="utf-8"?>';
-                        expect(xml.indexOf(str) == 0).to.be(true);
+                        expect(options.xml.indexOf(str) == 0).to.be(true);
 
                         var path = Path.join(projectDir, '' + //
                         'layers/country-shapes-110m/' + //
                         'd0c530d7-ne_110m_admin_0_countries.shp');
                         var str = '<Parameter name="file"><![CDATA[' + path
                                 + ']]></Parameter>'
-                        expect(xml.indexOf(str) > 0).to.be(true);
-                        console.log(xml);
+                        expect(options.xml.indexOf(str) > 0).to.be(true);
                     });
         });
     }));
@@ -125,13 +126,16 @@ describe('Tilepin.Project', function() {
                     };
                     var value = params.q.toUpperCase();
                     return project.prepareProjectConfig(params).then(
-                            function(xml) {
+                            function(options) {
                                 expect(handled).to.eql(true);
+                                expect(options.config.Layer[0].Datasource.q).to
+                                        .eql(value);
                                 // A new parameter added to the datalayer by a
                                 // project handler method
                                 var str = '<Parameter name="q">' + '<![CDATA['
                                         + value + ']]>' + '</Parameter>';
-                                expect(xml.indexOf(str) > 0).to.be(true);
+                                expect(options.xml.indexOf(str) > 0).to
+                                        .be(true);
                             });
                 })
             }));
