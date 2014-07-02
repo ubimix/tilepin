@@ -9,83 +9,135 @@ var _ = require('underscore');
 var FS = require('fs');
 var Path = require('path');
 
+var projectDir = Path.join(__dirname, 'projects/04-simple-shp-project');
+var projectFile = Path.join(projectDir, 'project.mml');
+
 describe('Tilepin.MapProvider', function() {
-    it('should be able to load a project configuration',
-            suite(function() {
-                var projectDir = Path.join(__dirname,
-                        'projects/04-simple-shp-project');
-                var projectFile = Path.join(projectDir, 'project.mml');
+    it('should be able to load a project configuration', //
+    withRenderer(function(renderer) {
+        var width = 1256;
+        var height = 1256;
+        var zoom = 5;
+        var format = 'png';
+        var bbox = Tilepin.MapProvider.getBoundingBox({
+            minX : -6.40625,
+            minY : 10.811521,
+            maxX : 55.15625,
+            maxY : 70.7289,
+        });
+        // -----
+        var bbox = Tilepin.MapProvider.getBoundingBox({
+            minX : -10.259765625,
+            minY : 35.24561909420681,
+            maxX : 50.51171875,
+            maxY : 82.23551372557404,
+        });
+        var zoom = 15;
+        var dim = Math.round(256);
+        var size = {
+            width : dim,
+            height : dim,
+        }
+        return renderer.buildVtile({
+            bbox : bbox,
+            size : size
+        })
+        // ------
+
+        // Build a vector tile
+        // return renderer.buildVtile({
+        // bbox : bbox,
+        // zoom : zoom
+        // })
+        // Render vector tile
+        .then(function(tile) {
+            return Tilepin.MapProvider.serializeVtile(tile);
+        })
+        // Parse vector tile with new size
+        .then(function(buf) {
+            return Tilepin.MapProvider.parseVtile(buf, size);
+        })
+        //
+        .then(function(tile) {
+            // var path = Path.join(projectDir, 'map.pbf');
+            // FS.writeFileSync(path, tile.getData());
+            var k = 1;
+            return renderer.renderVtile({
+                bbox : bbox,
+                format : format,
+                width : size.width * k,
+                height : size.height * k
+            }, tile);
+        })
+        // 
+        .then(function(img) {
+            var str = img.data.toString('hex');
+            var path = Path.join(projectDir, 'map.png');
+            // FS.writeFileSync(path, img.data);
+            var control = FS.readFileSync(path).toString('hex');
+            expect(str).to.eql(control);
+        })
+        // Close the renderer
+        .then(function(tile) {
+            renderer.close();
+        }, function(err) {
+            renderer.close();
+            throw err;
+        });
+    }));
+
+    it('should be able to load a project configuration', // 
+    withRenderer(function(renderer) {
+        var format = 'pdf'
+        var file = './tmp/map.' + format;
+        var bbox = Tilepin.MapProvider.getBoundingBox({
+            minX : -10.259765625,
+            minY : 35.24561909420681,
+            maxX : 74.51171875,
+            maxY : 72.23551372557404,
+        });
+        var zoom = 5;
+        var size = Tilepin.MapProvider.getMapSizeFromBoundingBox(zoom, bbox);
+        var ratio = size.height / size.width;
+        var height = 256;
+        var width = Math.round(height / ratio);
+        return renderer.renderMapToFile({
+            file : file,
+            format : format,
+            bbox : bbox,
+            size : {
+                width : width,
+                height : height
+            }
+        }).then(function() {
+            console.log('DONE!')
+        })
+    }));
+
+    function withRenderer(callback) {
+        return function(done) {
+            return Tilepin.P().then(function() {
                 var project = new Tilepin.Project({
                     projectDir : projectDir,
                     projectFile : projectFile
                 });
                 expect(project).not.to.be(null);
-                var params = {
-                    'q' : 'hello, world!'
-                };
-                return withProject(project, params, function(options) {
-
-                    var width = 256;
-                    var height = 256;
-                    var format = 'png';
-
-                    var bbox = Tilepin.MapProvider.getBoundingBox({
-                        west : -6.40625,
-                        north : 70.7289,
-                        east : 55.15625,
-                        south : 10.811521,
+                var params = {};
+                return Tilepin.P.fin(project.open().then(function(mml) {
+                    return project.prepareProjectConfig(params)//
+                    .then(function(options) {
+                        var renderer = new Tilepin.MapProvider({
+                            xml : options.xml,
+                            base : projectDir
+                        });
+                        return callback(renderer);
                     });
-                    var zoom = 5;
-                    var renderer = new Tilepin.MapProvider({
-                        xml : options.xml,
-                        base : projectDir
-                    });
-
-                    // Build a vector tile
-                    return renderer.buildVtile({
-                        bbox : bbox,
-                        zoom : zoom
-                    })
-                    // Render vector tile
-                    .then(function(tile) {
-                        // var path = Path.join(projectDir, 'map.pbf');
-                        // FS.writeFileSync(path, tile.getData());
-                        return renderer.renderVtile({
-                            bbox : bbox,
-                            width : width,
-                            height : height,
-                            format : format
-                        }, tile);
-                    }).then(function(img) {
-                        var str = img.data.toString('hex');
-                        var path = Path.join(projectDir, 'map.png');
-                        var control = FS.readFileSync(path).toString('hex');
-                        expect(str).to.eql(control);
-                    })
-                    // Close the renderer
-                    .then(function(tile) {
-                        renderer.close();
-                    }, function(err) {
-                        renderer.close();
-                        throw err;
-                    });
-                })
-            }));
-
-})
-
-function withProject(project, params, callback) {
-    return Tilepin.P.fin(project.open().then(function(mml) {
-        return project.prepareProjectConfig(params).then(callback);
-    }), function() {
-        return project.close();
-    });
-}
-
-function suite(test) {
-    return function(done) {
-        return Tilepin.P().then(test).then(done, function(err) {
-            done(err);
-        }).done();
+                }), function() {
+                    return project.close();
+                });
+            }).then(done, function(err) {
+                done(err);
+            }).done();
+        }
     }
-}
+})
