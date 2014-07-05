@@ -260,18 +260,18 @@ function auth(req, res, next) {
         res.set('WWW-Authenticate', 'Basic realm=Authorization Required');
         return res.send(401);
     }
-
-    var user = BasicAuth(req);
-
+    
     var basicAuthConfig = config.basicAuth || {};
 
-    if (!user || !user.name || !user.pass) {
-        return unauthorized(res);
-    }
-
-    var authorized = false;
-
     if (basicAuthConfig.accounts && Array.isArray(basicAuthConfig.accounts) && basicAuthConfig.accounts.length > 0) {
+        
+        var user = BasicAuth(req);
+        if (!user || !user.name || !user.pass) {
+            return unauthorized(res);
+        }
+
+        var authorized = false;
+
         // TODO: throw errror when no salt provided
         var salt = basicAuthConfig.salt;
 
