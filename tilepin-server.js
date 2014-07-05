@@ -1,4 +1,5 @@
 var express = require('express');
+var BasicAuth = require('basic-auth');
 var P = require('./tilepin-commons').P;
 var EventManager = require('./tilepin-commons').EventManager;
 var _ = require('underscore');
@@ -10,10 +11,10 @@ var Commons = require('./tilepin-commons');
 var Tilepin = require('./tilepin');
 var TilepinCache = require('./tilepin-cache-redis');
 var MapExport = require('./tilepin-export');
+var Hasher = require('./hasher');
 
 var workDir = process.cwd();
-var config = loadConfig(workDir, [ 'tilepin.config.js', 'tilepin.config.json',
-        'config.js', 'config.json' ]);
+var config = loadConfig(workDir, [ 'tilepin.config.js', 'tilepin.config.json', 'config.js', 'config.json' ]);
 
 var port = config.port || 8888;
 
@@ -67,7 +68,9 @@ promise = promise
         res.setHeader('Access-Control-Allow-Origin', '*');
         return next();
     });
-    app.use(express.static(workDir + '/'));
+
+    app.use('/', auth)
+    app.use('/', express.static(workDir + '/'));
 
     var mask;
 
@@ -251,3 +254,47 @@ function loadConfig(workDir, configFiles) {
         return {};
     return Commons.IO.loadObject(file);
 }
+
+function auth(req, res, next) {
+    function unauthorized(res) {
+        res.set('WWW-Authenticate', 'Basic realm=Authorization Required');
+        return res.send(401);
+    }
+
+    var user = BasicAuth(req);
+
+    var basicAuthConfig = config.basicAuth || {};
+
+    if (!user || !user.name || !user.pass) {
+        return unauthorized(res);
+    }
+
+    var authorized = false;
+
+    if (basicAuthConfig.accounts && Array.isArray(basicAuthConfig.accounts) && basicAuthConfig.accounts.length > 0) {
+        //TODO: throw errror when no salt provided
+        var salt = basicAuthConfig.salt;
+        _.each(basicAuthConfig.accounts, function(profile) {
+            //TODO: throw error when account does not contain ':' or more than one
+            var account = profile.split(':');
+            if (account[0] === user.name) {
+                Hasher({
+                    plaintext : user.pass,
+                    salt : salt
+                }, function(err, result) {
+                    var hash = result.key.toString('hex');
+                    var authorized = (hash === account[1]);
+                    console.log('authorized', authorized);
+                    if (authorized)
+                        return next();
+                    else
+                        return unauthorized(res);
+                });
+            }
+        });
+
+    } else {
+        return next();
+    }
+
+};
