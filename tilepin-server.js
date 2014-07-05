@@ -272,10 +272,20 @@ function auth(req, res, next) {
     var authorized = false;
 
     if (basicAuthConfig.accounts && Array.isArray(basicAuthConfig.accounts) && basicAuthConfig.accounts.length > 0) {
-        //TODO: throw errror when no salt provided
+        // TODO: throw errror when no salt provided
         var salt = basicAuthConfig.salt;
+
+        var promises = [];
+        var deferreds = [];
         _.each(basicAuthConfig.accounts, function(profile) {
-            //TODO: throw error when account does not contain ':' or more than one
+            var deferred = P.defer();
+            promises.push(deferred.promise);
+            deferreds.push(deferred);
+        });
+
+        _.each(basicAuthConfig.accounts, function(profile, index) {
+            // TODO: throw error when account does not contain ':' or more than
+            // one
             var account = profile.split(':');
             if (account[0] === user.name) {
                 Hasher({
@@ -283,14 +293,22 @@ function auth(req, res, next) {
                     salt : salt
                 }, function(err, result) {
                     var hash = result.key.toString('hex');
-                    var authorized = (hash === account[1]);
-                    console.log('authorized', authorized);
-                    if (authorized)
-                        return next();
-                    else
-                        return unauthorized(res);
+                    if (hash === account[1])
+                        authorized = true;
+                    deferreds[index].resolve(true);
+
                 });
+            } else {
+                deferreds[index].resolve(true);
             }
+        });
+
+        P.all(promises).then(function() {
+            if (authorized)
+                return next();
+            else
+                return unauthorized(res);
+
         });
 
     } else {
