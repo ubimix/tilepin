@@ -13,7 +13,6 @@ var Zlib = require('zlib');
 var Commons = require('./tilepin-commons');
 var P = Commons.P;
 
-var CartoJsonCss = require('./carto-json-css');
 var Carto = require('carto');
 var AdmZip = require('adm-zip');
 var LRU = require('lru-cache');
@@ -352,11 +351,23 @@ _.extend(TileSourceProvider.prototype, {
                 return Commons.IO.readString(this.file);
             },
             build : function() {
-                var renderer = new Carto.Renderer({
-                    filename : this.file,
-                    local_data_dir : configFileDir,
-                });
-                return P.ninvoke(renderer, 'render', jsonLoader.content);
+                var deferred = P.defer();
+                try {
+                    var renderer = new Carto.Renderer({
+                        filename : this.file,
+                        local_data_dir : configFileDir,
+                    });
+                    var result = renderer.render(jsonLoader.content, P
+                            .nresolver(deferred));
+                    console.log('Carto RESULT:', result)
+                    if (result) {
+                        // In case of the synchroneous reply (Carto v0.11)
+                        deferred.resolve(result);
+                    }
+                } catch (e) {
+                    deferred.reject(e);
+                }
+                return deferred.promise;
             },
             save : function() {
                 return Commons.IO.writeString(this.file, this.content);

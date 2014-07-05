@@ -11,7 +11,6 @@ var Http = require('http');
 var Yaml = require('js-yaml');
 
 var CartoJsonCss = require('./carto-json-css');
-var Carto = require('carto');
 var AdmZip = require('adm-zip');
 var LRU = require('lru-cache');
 var Commons = require('./tilepin-commons');
