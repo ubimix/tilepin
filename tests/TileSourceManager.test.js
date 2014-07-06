@@ -19,7 +19,7 @@ describe('TileSourceManager', function() {
     it('should be able to load and return a tile source provider',
             suite(function() {
                 return manager.loadTileSourceProvider({
-                    source : 'project-01'
+                    source : '01-simple-tilemill-project'
                 }).then(
                         function(provider) {
                             expect(provider).not.to.be(null);
@@ -33,7 +33,7 @@ describe('TileSourceManager', function() {
             + 'for the same source key',//
     suite(function() {
         var params = {
-            source : 'project-01'
+            source : '01-simple-tilemill-project'
         };
         function load(count) {
             var promises = [];
@@ -70,7 +70,7 @@ describe('TileSourceManager', function() {
     it('tile source provider ' + 'should create tile source instances', //
     suite(function() {
         return manager.loadTileSourceProvider({
-            source : 'project-01'
+            source : '01-simple-tilemill-project'
         }).then(function(provider) {
             return provider.prepareTileSource({}).then(function(tileSource) {
                 expect(tileSource).not.to.be(null);
@@ -83,7 +83,7 @@ describe('TileSourceManager', function() {
     it('tile sources should build images', //
     suite(function(done) {
         return manager.loadTileSourceProvider({
-            source : 'project-01'
+            source : '01-simple-tilemill-project'
         }).then(function(provider) {
             return provider.prepareTileSource({}).then(function(tileSource) {
                 expect(tileSource).not.to.be(null);

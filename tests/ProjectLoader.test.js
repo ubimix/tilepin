@@ -38,7 +38,7 @@ describe('TileProjectLoader', function() {
             })
         })
     });
-    var projectDir = Path.join(__dirname, 'projects/project-01');
+    var projectDir = Path.join(__dirname, 'projects/01-simple-tilemill-project');
     var projectFile = Path.join(projectDir, 'project.mml');
 
     it('should be able to prepare project '

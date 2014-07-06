@@ -26,7 +26,7 @@ describe('TilesProvider', function() {
     suite(function(done) {
         var provider = new TilesProvider(options);
         var params = {
-            source : 'project-01',
+            source : '01-simple-tilemill-project',
             format : 'png',
             z : 1,
             x : 0,
@@ -55,7 +55,7 @@ describe('TilesProvider', function() {
     suite(function() {
         var provider = new TilesProvider(options);
         return provider.loadTile({
-            source : 'project-01',
+            source : '01-simple-tilemill-project',
             format : 'grid.json',
             z : 1,
             x : 0,
@@ -86,10 +86,10 @@ describe('TilesProvider', function() {
         }, options));
 
         return provider.invalidate({
-            source : 'project-01'
+            source : '01-simple-tilemill-project'
         }).then(function() {
             return provider.loadTile({
-                source : 'project-01',
+                source : '01-simple-tilemill-project',
                 format : 'grid.json',
                 z : 1,
                 x : 0,
@@ -98,7 +98,7 @@ describe('TilesProvider', function() {
         }).then(
                 function(info) {
                     var expected = Path.resolve(__dirname,
-                            'projects/project-01/data/'
+                            'projects/01-simple-tilemill-project/data/'
                                     + 'ne_110m_admin_0_countries/'
                                     + 'ne_110m_admin_0_countries.shp');
                     expect(test).to.eql(expected);
