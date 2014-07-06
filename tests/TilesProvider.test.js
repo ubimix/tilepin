@@ -3,8 +3,6 @@ var _ = require('underscore');
 var FS = require('fs');
 var Path = require('path');
 var Tilepin = require('../lib/');
-var ProjectLoader = require('../tilepin-loader');
-var ProjectManager = require('../tilepin-provider');
 var TilesProvider = require('../tilepin').TilesProvider;
 
 var projectsDir = Path.join(__dirname, 'projects');
@@ -98,8 +96,8 @@ describe('TilesProvider', function() {
         }).then(
                 function(info) {
                     var expected = Path.resolve(__dirname,
-                            'projects/01-simple-tilemill-project/data/'
-                                    + 'ne_110m_admin_0_countries/'
+                            'projects/01-simple-tilemill-project/' + 'layers/'
+                                    + 'country-shapes-110m/' + 'd0c530d7-'
                                     + 'ne_110m_admin_0_countries.shp');
                     expect(test).to.eql(expected);
                     var file = Path.resolve(__dirname,
