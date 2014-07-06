@@ -3,11 +3,8 @@ var Path = require('path')
 var Url = require('url');
 var FS = require('fs');
 var Crypto = require('crypto');
-
-var Commons = require('./tilepin-commons');
-var P = Commons.P;
-
 var LRU = require('lru-cache');
+var Tilepin = require('./lib/');
 var TileSourceManager = require('./tilepin-provider');
 
 function TilesProvider(options) {
@@ -15,36 +12,40 @@ function TilesProvider(options) {
     this.cache = options.cache || new MemCache();
     this.tileSourceManager = new TileSourceManager(this.options);
     var eventManager = this._getEventManager();
-    Commons.addEventTracing(this, [ 'invalidate', 'loadTile', 'loadInfo' ],
-            eventManager);
+    Tilepin.Events.Mixin.addEventTracing(this, [ 'invalidate', 'loadTile',
+            'loadInfo' ], eventManager);
 }
-_.extend(TilesProvider.prototype, Commons.Events, {
+_.extend(TilesProvider.prototype, Tilepin.Events, {
 
     invalidate : function(params) {
         var that = this;
         var sourceKey = that._getSourceKey(params);
         var resetAll = true;
         var cacheKeys = [];
-        return P().then(function() {
+        return Tilepin.P().then(function() {
             return that.tileSourceManager //
             .loadTileSourceProvider(params) //
             .then(function(provider) {
                 return that._getFormats(params).then(function(formats) {
-                    return P.all(_.map(formats, function(format) {
+                    return Tilepin.P.all(_.map(formats, function(format) {
                         var cacheKey = provider.getCacheKey(params, format);
                         cacheKeys.push(cacheKey);
                     }));
                 });
             });
-        }).then(function() {
-            return P.all([ invalidateCache(), clearTileSourceProvider() ]);
-        }, function(err) {
-            return P.all([ invalidateCache(), clearTileSourceProvider() ]);
-            throw err;
-        });
+        }).then(
+                function() {
+                    return Tilepin.P.all([ invalidateCache(),
+                            clearTileSourceProvider() ]);
+                },
+                function(err) {
+                    return Tilepin.P.all([ invalidateCache(),
+                            clearTileSourceProvider() ]);
+                    throw err;
+                });
         function invalidateCache() {
             if (cacheKeys.length) {
-                return P.all(_.map(cacheKeys, function(cacheKey) {
+                return Tilepin.P.all(_.map(cacheKeys, function(cacheKey) {
                     return that.cache.reset(sourceKey, cacheKey);
                 }));
             } else {
@@ -96,7 +97,7 @@ _.extend(TilesProvider.prototype, Commons.Events, {
         .then(function(provider) {
             return provider.prepareTileSource(params);
         }).then(function(tileSource) {
-            return P.ninvoke(tileSource, 'getInfo');
+            return Tilepin.P.ninvoke(tileSource, 'getInfo');
         });
     },
 
@@ -107,7 +108,7 @@ _.extend(TilesProvider.prototype, Commons.Events, {
                 return _.contains(params.formats, format);
             })
         }
-        return P(result);
+        return Tilepin.P(result);
     },
 
     _getSourceKey : function(params, suffix) {
@@ -125,7 +126,7 @@ _.extend(TilesProvider.prototype, Commons.Events, {
         return !!params.reload;
     },
     _prepareUtfGrid : function(tile) {
-        function toObject(value){
+        function toObject(value) {
             if (_.isString(value) && value[0] == '{') {
                 try {
                     value = JSON.parse(value);
@@ -151,7 +152,7 @@ _.extend(TilesProvider.prototype, Commons.Events, {
         return tile;
     },
     _readTile : function(tileSource, params) {
-        var deferred = P.defer();
+        var deferred = Tilepin.P.defer();
         try {
             var format = params.format;
             var z = params.z;
@@ -193,12 +194,12 @@ _.extend(MemCache.prototype, {
         } else {
             this.cache.del(sourceKey);
         }
-        return P();
+        return Tilepin.P();
     },
     get : function(sourceKey, tileKey) {
         var cache = this.cache.get(sourceKey);
         var result = cache ? cache.get(tileKey) : undefined;
-        return P(result);
+        return Tilepin.P(result);
     },
     set : function(sourceKey, tileKey, tile) {
         var cache = this.cache.get(sourceKey);
@@ -206,7 +207,7 @@ _.extend(MemCache.prototype, {
             cache = new LRU(this.options);
             this.cache.set(sourceKey, cache);
         }
-        return P(cache.set(tileKey, tile));
+        return Tilepin.P(cache.set(tileKey, tile));
     },
 })
 

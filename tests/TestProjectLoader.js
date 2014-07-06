@@ -3,7 +3,7 @@ var _ = require('underscore');
 var FS = require('fs');
 var Path = require('path');
 var ProjectLoader = require('../tilepin-loader');
-var P = require('../tilepin-commons').P;
+var Tilepin = require('../lib/');
 
 var options = {
     dir : __dirname
@@ -115,7 +115,7 @@ describe('TileProjectLoader', function() {
 
 function suite(test) {
     return function(done) {
-        return P().then(test).then(done, function(err) {
+        return Tilepin.P().then(test).then(done, function(err) {
             done();
             throw err;
         }).done();

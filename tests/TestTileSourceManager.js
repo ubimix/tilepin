@@ -1,7 +1,7 @@
 var expect = require('expect.js');
 var _ = require('underscore');
 var Path = require('path');
-var P = require('../tilepin-commons').P;
+var Tilepin = require('../lib/');
 
 var TileSourceManager = require('../tilepin-provider');
 
@@ -41,7 +41,7 @@ describe('TileSourceManager', function() {
                 var p = manager.loadTileSourceProvider(params);
                 promises.push(p);
             }
-            return P.all(promises);
+            return Tilepin.P.all(promises);
         }
         function test(count, control, providers) {
             expect(providers).not.to.be(null);
@@ -52,7 +52,7 @@ describe('TileSourceManager', function() {
         }
         var control;
         var count = 100;
-        return P().then(function() {
+        return Tilepin.P().then(function() {
             return manager.loadTileSourceProvider(params);
         }).then(function(provider) {
             control = provider;
@@ -95,7 +95,7 @@ describe('TileSourceManager', function() {
 
 function suite(test) {
     return function(done) {
-        return P().then(test).then(done, function(err) {
+        return Tilepin.P().then(test).then(done, function(err) {
             done();
             throw err;
         }).done();

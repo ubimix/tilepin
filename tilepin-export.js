@@ -1,8 +1,7 @@
 /** Map export in various formats (PNG, JPG, SVG, PDF...) */
 var Path = require('path')
 var FS = require('fs');
-var Commons = require('./tilepin-commons');
-var P = Commons.P;
+var Tilepin = require('./lib/');
 var _ = require('underscore');
 
 var mercator = new (require('sphericalmercator'));
@@ -25,7 +24,7 @@ _.extend(MapExport.prototype, {
 
     generateMap : function(params) {
         var that = this;
-        return P().then(function() {
+        return Tilepin.P().then(function() {
             var format = params.format || 'pdf';
             var zoom = params.zoom;
             var fileDir = that.fileDir;
@@ -54,7 +53,7 @@ _.extend(MapExport.prototype, {
             that._filePromiseIndex = filePromiseIndex;
             var promise = filePromiseIndex[outputFile];
             if (!promise && FS.existsSync(outputFile)) {
-                promise = P();
+                promise = Tilepin.P();
             }
             if (!promise) {
                 promise = filePromiseIndex[outputFile] = // 
@@ -63,9 +62,9 @@ _.extend(MapExport.prototype, {
                     var options = _.extend({}, uri, size);
                     var map = new mapnik.Map(options.width, options.height);
                     map.extent = bbox;
-                    return P.ninvoke(map, 'fromString', options.xml, options)//
+                    return Tilepin.P.ninvoke(map, 'fromString', options.xml, options)//
                     .then(function(map) {
-                        return P.ninvoke(map, 'renderFile', outputFile, {
+                        return Tilepin.P.ninvoke(map, 'renderFile', outputFile, {
                             format : format,
                             scale : scale
                         });
@@ -88,7 +87,7 @@ _.extend(MapExport.prototype, {
                     mime = 'image/svg+xml';
                     break;
                 }
-                return P.ninvoke(FS, 'readFile', outputFile) //
+                return Tilepin.P.ninvoke(FS, 'readFile', outputFile) //
                 .then(function(buffer) {
                     return {
                         file : buffer,

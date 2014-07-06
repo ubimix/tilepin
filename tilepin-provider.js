@@ -10,8 +10,7 @@ var Crypto = require('crypto');
 var Http = require('http');
 var Zlib = require('zlib');
 
-var Commons = require('./tilepin-commons');
-var P = Commons.P;
+var Tilepin = require('./lib/');
 
 var Carto = require('carto');
 var AdmZip = require('adm-zip');
@@ -36,8 +35,8 @@ function CompositeTileSource(tileSources, interactiveLayer) {
 _.extend(CompositeTileSource.prototype, {
     getTile : function(z, x, y, callback) {
         var that = this;
-        P.all(_.map(that.tileSources, function(tileSource) {
-            var deferred = P.defer();
+        Tilepin.P.all(_.map(that.tileSources, function(tileSource) {
+            var deferred = Tilepin.P.defer();
             // console.log(' * BGN [' + z + ',' + x + ',' + y + ']',
             // tileSource.sourceKey);
             tileSource.getTile(z, x, y, function(err, tile, meta) {
@@ -67,17 +66,17 @@ _.extend(CompositeTileSource.prototype, {
         //
         .then(function(tiles) {
             // Unzip all tiles
-            return P.all(_.map(tiles, function(tile) {
+            return Tilepin.P.all(_.map(tiles, function(tile) {
                 var meta = tile.meta;
                 if (meta['Content-Encoding'] == 'deflate') {
-                    return P.ninvoke(Zlib, 'inflate', tile.tile);
+                    return Tilepin.P.ninvoke(Zlib, 'inflate', tile.tile);
                 }
                 return tile.tile;
             }))
             // Concat and re-zip all tiles
             .then(function(tiles) {
                 var buf = Buffer.concat(tiles);
-                return P.ninvoke(Zlib, 'deflate', buf);
+                return Tilepin.P.ninvoke(Zlib, 'deflate', buf);
             });
         })
         // Return the final tile
@@ -103,8 +102,8 @@ _.extend(CompositeTileSource.prototype, {
     },
     getInfo : function(callback) {
         var that = this;
-        P.all(_.map(that.tileSources, function(tileSource) {
-            return P.ninvoke(tileSource, 'getInfo');
+        Tilepin.P.all(_.map(that.tileSources, function(tileSource) {
+            return Tilepin.P.ninvoke(tileSource, 'getInfo');
         })).then(function(list) {
             var result = {};
             _.each(list, function(info) {
@@ -140,7 +139,7 @@ _.extend(TileSourceProvider.prototype, {
                 return that._loadTileliveSourceUri(uri, params);
             }) // 
             .then(function(uri) {
-                return P.ninvoke(Tilelive, 'load', uri);
+                return Tilepin.P.ninvoke(Tilelive, 'load', uri);
             }) //
             .then(function(tileSource) {
                 return that._wrapTileSource(tileSource, params);
@@ -184,14 +183,14 @@ _.extend(TileSourceProvider.prototype, {
 
     clear : function(params) {
         var dir = this._getMapnikConfigDir();
-        return P.ninvoke(FS, 'readdir', dir).then(function(array) {
-            return P.all(_.map(array, function(name) {
+        return Tilepin.P.ninvoke(FS, 'readdir', dir).then(function(array) {
+            return Tilepin.P.all(_.map(array, function(name) {
                 if (!name.indexOf('project.tilepin.') == 0)
                     return;
                 var ext = Path.extname(name);
                 if (ext == '.xml' || ext == '.json') {
                     var file = Path.join(dir, name);
-                    return Commons.IO.deleteFile(file);
+                    return Tilepin.IO.deleteFile(file);
                 }
             }));
         })
@@ -201,7 +200,7 @@ _.extend(TileSourceProvider.prototype, {
         var that = this;
         if (this._projectConfigPromise)
             return this._projectConfigPromise;
-        return this._projectConfigPromise = P().then(
+        return this._projectConfigPromise = Tilepin.P().then(
                 function() {
                     var sourceKey = that._getSourceKey();
                     var projectDir = that._getProjectDir();
@@ -220,7 +219,7 @@ _.extend(TileSourceProvider.prototype, {
 
     close : function(params) {
         var that = this;
-        return P().then(function() {
+        return Tilepin.P().then(function() {
             delete that._handlers;
             delete that._projectConfigPromise;
         }).then(function() {
@@ -288,7 +287,7 @@ _.extend(TileSourceProvider.prototype, {
         if (!path)
             return;
         delete that._queryScript;
-        return Commons.IO.clearObject(path);
+        return Tilepin.IO.clearObject(path);
     },
 
     _getQueryScript : function() {
@@ -298,7 +297,7 @@ _.extend(TileSourceProvider.prototype, {
         var path = that._getQueryScriptPath();
         if (!path)
             return;
-        that._queryScript = Commons.IO.loadObject(path);
+        that._queryScript = Tilepin.IO.loadObject(path);
         return that._queryScript;
     },
 
@@ -334,13 +333,13 @@ _.extend(TileSourceProvider.prototype, {
             file : configFileBase + '.json',
             content : null,
             load : function() {
-                return Commons.IO.readJson(this.file);
+                return Tilepin.IO.readJson(this.file);
             },
             build : function() {
                 return that._getProcessedConfig(params);
             },
             save : function() {
-                return Commons.IO.writeJson(this.file, this.content);
+                return Tilepin.IO.writeJson(this.file, this.content);
             }
         };
         var xmlLoader = {
@@ -348,18 +347,17 @@ _.extend(TileSourceProvider.prototype, {
             file : configFile,
             content : null,
             load : function() {
-                return Commons.IO.readString(this.file);
+                return Tilepin.IO.readString(this.file);
             },
             build : function() {
-                var deferred = P.defer();
+                var deferred = Tilepin.P.defer();
                 try {
                     var renderer = new Carto.Renderer({
                         filename : this.file,
                         local_data_dir : configFileDir,
                     });
-                    var result = renderer.render(jsonLoader.content, P
+                    var result = renderer.render(jsonLoader.content, Tilepin.P
                             .nresolver(deferred));
-                    console.log('Carto RESULT:', result)
                     if (result) {
                         // In case of the synchroneous reply (Carto v0.11)
                         deferred.resolve(result);
@@ -370,10 +368,10 @@ _.extend(TileSourceProvider.prototype, {
                 return deferred.promise;
             },
             save : function() {
-                return Commons.IO.writeString(this.file, this.content);
+                return Tilepin.IO.writeString(this.file, this.content);
             }
         }
-        var promise = P();
+        var promise = Tilepin.P();
         _.each([ jsonLoader, xmlLoader ], function(loader) {
             promise = promise.then(function() {
                 var file = loader.file;
@@ -402,7 +400,7 @@ _.extend(TileSourceProvider.prototype, {
 
     _getProcessingHandlers : function() {
         var that = this;
-        return P().then(function() {
+        return Tilepin.P().then(function() {
             if (that._handlers)
                 return that._handlers;
             that._handlers = [];
@@ -426,7 +424,7 @@ _.extend(TileSourceProvider.prototype, {
         var that = this;
         // Deep copy of the config
         var config = that._getConfig(true);
-        return P().then(function() {
+        return Tilepin.P().then(function() {
             var script = that._getQueryScript();
             if (script && _.isFunction(script.prepareConfig)) {
                 return script.prepareConfig({
@@ -440,7 +438,7 @@ _.extend(TileSourceProvider.prototype, {
             return that._getProcessingHandlers().then(function(handlers) {
                 if (!handlers.length)
                     return;
-                return P.all(_.map(config.Layer, function(dataLayer) {
+                return Tilepin.P.all(_.map(config.Layer, function(dataLayer) {
                     if (!dataLayer.Datasource)
                         return;
                     var args = {
@@ -450,7 +448,7 @@ _.extend(TileSourceProvider.prototype, {
                     };
                     if (handlers.length == 1)
                         return handlers[0](args);
-                    return P.all(_.map(handlers, function(handler) {
+                    return Tilepin.P.all(_.map(handlers, function(handler) {
                         return handler(args);
                     }));
                 }));
@@ -462,7 +460,7 @@ _.extend(TileSourceProvider.prototype, {
 
     _loadTileliveSourceUri : function(uri, params) {
         var that = this;
-        return P().then(
+        return Tilepin.P().then(
                 function() {
                     if (that._isVectorTileRequested(params)
                             && !that._isRemoteSource(params)) {
@@ -480,16 +478,17 @@ _.extend(TileSourceProvider.prototype, {
                             return uri;
 
                         var manager = that.options.sourceManager;
-                        return P.all(_.map(vectorTilesParams, function(prm) {
-                            return manager.loadTileSourceProvider(prm) //
-                            .then(function(provider) {
-                                return provider.prepareTileSource(prm) //
-                                .then(function(tileSource) {
-                                    tileSource.sourceKey = prm.source;
-                                    return tileSource;
-                                });
-                            });
-                        })).then(
+                        return Tilepin.P.all(
+                                _.map(vectorTilesParams, function(prm) {
+                                    return manager.loadTileSourceProvider(prm) //
+                                    .then(function(provider) {
+                                        return provider.prepareTileSource(prm) //
+                                        .then(function(tileSource) {
+                                            tileSource.sourceKey = prm.source;
+                                            return tileSource;
+                                        });
+                                    });
+                                })).then(
                                 function(tileSources) {
                                     var tileSource = new CompositeTileSource(
                                             tileSources);
@@ -549,14 +548,14 @@ _.extend(TileSourceProvider.prototype, {
                 });
             }
             if (_.isFunction(tileSource.close)) {
-                return P.ninvoke(tileSource, 'close');
+                return Tilepin.P.ninvoke(tileSource, 'close');
             }
         })
     },
 
     _prepareUri : function(params) {
         var that = this;
-        return P().then(function() {
+        return Tilepin.P().then(function() {
             var uri = that._uri
             if (uri.handler && _.isFunction(uri.handler.prepareUri)) {
                 return uri.handler.prepareUri(params, uri);
@@ -593,8 +592,8 @@ _.extend(TileSourceProvider.prototype, {
                     params : params
                 }
             });
-            return Commons.addEventTracingWithCallbacks(tileSource, methods,
-                    eventManager);
+            return Tilepin.Events.Mixin.addEventTracingWithCallbacks(
+                    tileSource, methods, eventManager);
         } else {
             return tileSource;
         }
@@ -622,7 +621,7 @@ function TileSourceManager() {
         this.initialize.apply(this, arguments);
     }
 }
-_.extend(TileSourceManager.prototype, Commons.Events, {
+_.extend(TileSourceManager.prototype, Tilepin.Events, {
 
     type : 'TileSourceManager',
 
@@ -638,7 +637,7 @@ _.extend(TileSourceManager.prototype, Commons.Events, {
         that.projectLoader = that.options.projectLoader
                 || new ProjectLoader(that.options);
         var eventManager = that._getEventManager();
-        Commons.addEventTracing(that, [ 'loadTileSourceProvider',
+        Tilepin.Events.Mixin.addEventTracing(that, [ 'loadTileSourceProvider',
                 'clearTileSourceProvider' ], eventManager);
     },
 
@@ -648,7 +647,7 @@ _.extend(TileSourceManager.prototype, Commons.Events, {
     loadTileSourceProvider : function(params) {
         var that = this;
         var eventManager = that._getEventManager();
-        return P().then(function() {
+        return Tilepin.P().then(function() {
             var cacheKey = that._getCacheKey(params);
             var provider = that.sourceCache.get(cacheKey);
             if (provider) {
@@ -675,7 +674,7 @@ _.extend(TileSourceManager.prototype, Commons.Events, {
     /** Cleans up a tile source corresponding to the specified parameters */
     clearTileSourceProvider : function(params) {
         var that = this;
-        return P().then(function() {
+        return Tilepin.P().then(function() {
             var cacheKey = that._getCacheKey(params);
             var provider = that.sourceCache.get(cacheKey);
             if (!provider) {

@@ -1,10 +1,10 @@
 var Path = require('path')
 var FS = require('fs');
-var P = require('./tilepin-commons').P;
 var _ = require('underscore');
 var LRU = require('lru-cache');
 var Redis = require('redis');
 var Zlib = require('zlib');
+var Tilepin = require('./lib/');
 
 /**
  * 
@@ -32,16 +32,16 @@ function RedisCache(options) {
 }
 _.extend(RedisCache.prototype, {
     open : function() {
-        return P();
+        return Tilepin.P();
     },
     close : function() {
         client.quit();
-        return P();
+        return Tilepin.P();
     },
     _invokeClient : function(method, args) {
-        var deferred = P.defer();
+        var deferred = Tilepin.P.defer();
         try {
-            args.push(P.nresolver(deferred));
+            args.push(Tilepin.P.nresolver(deferred));
             method = this.client[method];
             method.apply(this.client, args);
         } catch (e) {
@@ -52,21 +52,21 @@ _.extend(RedisCache.prototype, {
     _invoke : function(method, sourceKey, tileArgs, headersArgs) {
         tileArgs = [ sourceKey ].concat(tileArgs);
         headersArgs = [ 'h:' + sourceKey ].concat(headersArgs);
-        return P.all([ this._invokeClient(method, tileArgs),
+        return Tilepin.P.all([ this._invokeClient(method, tileArgs),
                 this._invokeClient(method, headersArgs) ]);
     },
     _convertJsonToBuffer : function(obj) {
         if (!obj)
-            return P();
+            return Tilepin.P();
         var str = JSON.stringify(obj);
-        return P.ninvoke(Zlib, 'gzip', str).then(function(result) {
+        return Tilepin.P.ninvoke(Zlib, 'gzip', str).then(function(result) {
             return result;
         })
     },
     _convertBufferToJson : function(buf) {
         if (!buf)
-            return P();
-        return P.ninvoke(Zlib, 'gunzip', buf).then(function(buf) {
+            return Tilepin.P();
+        return Tilepin.P.ninvoke(Zlib, 'gunzip', buf).then(function(buf) {
             var str = buf.toString('utf8');
             var result = JSON.parse(str);
             return result;
@@ -119,7 +119,7 @@ _.extend(RedisCache.prototype, {
                 function(headersBlob) {
                     var promise;
                     if (!that._isJson(tile.headers)) {
-                        promise = P(tile.tile);
+                        promise = Tilepin.P(tile.tile);
                     } else {
                         promise = that._convertJsonToBuffer(tile.tile);
                     }

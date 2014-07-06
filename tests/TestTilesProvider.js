@@ -2,9 +2,9 @@ var expect = require('expect.js');
 var _ = require('underscore');
 var FS = require('fs');
 var Path = require('path');
+var Tilepin = require('../lib/');
 var ProjectLoader = require('../tilepin-loader');
 var ProjectManager = require('../tilepin-provider');
-var P = require('../tilepin-commons').P;
 var TilesProvider = require('../tilepin').TilesProvider;
 
 var projectsDir = Path.join(__dirname, 'projects');
@@ -32,7 +32,7 @@ describe('TilesProvider', function() {
             x : 0,
             y : 0,
         };
-        return P().then(function() {
+        return Tilepin.P().then(function() {
             return provider.invalidate(params);
         }).then(function() {
             return provider.loadTile(params);
@@ -40,12 +40,14 @@ describe('TilesProvider', function() {
                 function(info) {
                     var file = Path.resolve(__dirname,
                             './expected/expected-tile-1-0-0.png');
-                    return P.ninvoke(FS, 'readFile', file).then(function(buf) {
-                        var first = getHash(info.tile);
-                        var second = getHash(buf);
-                        // P.ninvoke(FS, 'writeFile', 'tile.png', info.tile);
-                        expect(first).to.eql(second);
-                    })
+                    return Tilepin.P.ninvoke(FS, 'readFile', file).then(
+                            function(buf) {
+                                var first = getHash(info.tile);
+                                var second = getHash(buf);
+                                // Tilepin.P.ninvoke(FS, 'writeFile',
+                                // 'tile.png', info.tile);
+                                expect(first).to.eql(second);
+                            })
                 });
     }))
 
@@ -62,8 +64,8 @@ describe('TilesProvider', function() {
                 function(info) {
                     var file = Path.resolve(__dirname,
                             './expected/expected-tile-1-0-0.grid.json');
-                    return P.ninvoke(FS, 'readFile', file, 'UTF-8').then(
-                            function(buf) {
+                    return Tilepin.P.ninvoke(FS, 'readFile', file, 'UTF-8')
+                            .then(function(buf) {
                                 var first = toString(info.tile);
                                 expect(first).to.eql(buf);
                             })
@@ -102,10 +104,10 @@ describe('TilesProvider', function() {
                     expect(test).to.eql(expected);
                     var file = Path.resolve(__dirname,
                             './expected/expected-tile-1-0-0.grid.json');
-                    // return P.ninvoke(FS, 'writeFile', file,
+                    // return Tilepin.P.ninvoke(FS, 'writeFile', file,
                     // toString(info.tile), 'UTF-8');
-                    return P.ninvoke(FS, 'readFile', file, 'UTF-8').then(
-                            function(buf) {
+                    return Tilepin.P.ninvoke(FS, 'readFile', file, 'UTF-8')
+                            .then(function(buf) {
                                 var first = toString(info.tile);
                                 expect(first).to.eql(buf);
                             })
@@ -115,7 +117,7 @@ describe('TilesProvider', function() {
 
 function suite(test) {
     return function(done) {
-        return P().then(test).then(done, function(err) {
+        return Tilepin.P().then(test).then(done, function(err) {
             done();
             throw err;
         }).done();

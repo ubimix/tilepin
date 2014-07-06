@@ -13,8 +13,7 @@ var Yaml = require('js-yaml');
 var CartoJsonCss = require('./carto-json-css');
 var AdmZip = require('adm-zip');
 var LRU = require('lru-cache');
-var Commons = require('./tilepin-commons');
-var P = Commons.P;
+var Tilepin = require('./lib/');
 
 module.exports = ProjectLoader;
 
@@ -28,12 +27,12 @@ function ProjectLoader(options) {
         this.options.dir = './';
     }
     this._promises = {};
-    Commons
+    Tilepin.Events.Mixin
             .addEventTracing(this,
                     [ 'clearProjectConfig', 'loadProjectConfig' ]);
 }
 
-_.extend(ProjectLoader.prototype, Commons.Events, {
+_.extend(ProjectLoader.prototype, Tilepin.Events, {
 
     clearProjectConfig : function(projectDir) {
         var that = this;
@@ -48,7 +47,7 @@ _.extend(ProjectLoader.prototype, Commons.Events, {
         var conf = projectInfo.config;
         promises.push(that._processDataSources(projectDir, conf));
         promises.push(that._loadProjectStyles(projectDir, conf));
-        return P.all(promises).then(function() {
+        return Tilepin.P.all(promises).then(function() {
             return projectInfo;
         });
     },
@@ -59,7 +58,7 @@ _.extend(ProjectLoader.prototype, Commons.Events, {
     },
 
     _findDataIndex : function(dir, url) {
-        return P.ninvoke(FS, 'readdir', dir).then(function(list) {
+        return Tilepin.P.ninvoke(FS, 'readdir', dir).then(function(list) {
             var result = null;
             _.each(list, function(file) {
                 if (file.lastIndexOf('.shp') > 0) {
@@ -85,7 +84,7 @@ _.extend(ProjectLoader.prototype, Commons.Events, {
                 + that._getSha1(url);
         var dataDir = Path.join(dir, path);
         var dataFileName = Path.join(dataDir, Path.basename(obj.pathname));
-        var promise = Commons.IO.mkdirs(dataDir);
+        var promise = Tilepin.IO.mkdirs(dataDir);
         return promise.then(function() {
             if (!FS.existsSync(dataFileName)) {
                 return that._download(dataFileName, url)
@@ -104,7 +103,7 @@ _.extend(ProjectLoader.prototype, Commons.Events, {
     _download : function(dataFileName, url) {
         var that = this;
         function httpGet(options, redirectCount) {
-            var diferred = P.defer();
+            var diferred = Tilepin.P.defer();
             try {
                 if (redirectCount >= that._getMaxRedirects()) {
                     throw new Error('Too many redirections. (' + redirectCount
@@ -137,10 +136,10 @@ _.extend(ProjectLoader.prototype, Commons.Events, {
         var dataDir = Path.dirname(dataFileName);
         function f() {
         }
-        return P.ninvoke(FS, 'mkdir', dataDir).then(f, f).then(function() {
+        return Tilepin.P.ninvoke(FS, 'mkdir', dataDir).then(f, f).then(function() {
             var options = Url.parse(url);
             return httpGet(options, 0).then(function(res) {
-                var diferred = P.defer();
+                var diferred = Tilepin.P.defer();
                 try {
                     var file = FS.createWriteStream(dataFileName);
                     res.pipe(file);
@@ -160,7 +159,7 @@ _.extend(ProjectLoader.prototype, Commons.Events, {
         var zip = new AdmZip(zipFile);
         var zipEntries = zip.getEntries(); // an array of
         // ZipEntry records
-        return P.all(_.map(zipEntries, function(zipEntry) {
+        return Tilepin.P.all(_.map(zipEntries, function(zipEntry) {
             var file = Path.join(dataDir, zipEntry.entryName);
             zip.extractEntryTo(zipEntry.entryName, dataDir, true, true);
         }));
@@ -168,7 +167,7 @@ _.extend(ProjectLoader.prototype, Commons.Events, {
 
     _readProjectFile : function(dir) {
         var names = [ 'project.yml', 'project.mml' ];
-        return P().then(function() {
+        return Tilepin.P().then(function() {
             var path = _.find(_.map(names, function(name) {
                 return Path.join(dir, name);
             }), function(path) {
@@ -180,7 +179,7 @@ _.extend(ProjectLoader.prototype, Commons.Events, {
                 msg += '). Dir: "' + dir + '".';
                 throw new Error(msg);
             }
-            return Commons.IO.readString(path).then(function(str) {
+            return Tilepin.IO.readString(path).then(function(str) {
                 var obj = Yaml.load(str);
                 return {
                     pathname : path,
@@ -192,7 +191,7 @@ _.extend(ProjectLoader.prototype, Commons.Events, {
 
     _processDataSources : function(projectDir, config) {
         var that = this
-        return P.all(_.map(config.Layer, function(dataLayer) {
+        return Tilepin.P.all(_.map(config.Layer, function(dataLayer) {
             if (!dataLayer.Datasource)
                 return;
             var result;
@@ -210,13 +209,13 @@ _.extend(ProjectLoader.prototype, Commons.Events, {
             return result;
         }));
         function prepareDbSource(dataLayer) {
-            return P().then(function() {
+            return Tilepin.P().then(function() {
                 var file = dataLayer.Datasource.file //
                         || dataLayer.Datasource.query;
                 var table = dataLayer.Datasource.table;
                 if (file && !table) {
                     file = Path.join(projectDir, file);
-                    return Commons.IO.readString(file).then(function(content) {
+                    return Tilepin.IO.readString(file).then(function(content) {
                         delete dataLayer.Datasource.file;
                         dataLayer.Datasource.table = '(' // 
                                 + content + ') as data';
@@ -226,7 +225,7 @@ _.extend(ProjectLoader.prototype, Commons.Events, {
         }
         function prepareFileSource(dataLayer) {
             var url = dataLayer.Datasource.file;
-            var promise = P();
+            var promise = Tilepin.P();
             if (url && url.match(/^https?:\/\/.*$/gim)) {
                 var layersDir = Path.join(projectDir, 'data');
                 promise = that._downloadAndUnzip(url, layersDir).then(
@@ -248,7 +247,7 @@ _.extend(ProjectLoader.prototype, Commons.Events, {
     },
     _loadProjectStyles : function(projectDir, config) {
         var that = this;
-        return P.all(_.map(config.Stylesheet, function(stylesheet) {
+        return Tilepin.P.all(_.map(config.Stylesheet, function(stylesheet) {
             return that._loadProjectStyle(projectDir, stylesheet);
         })).then(function(styles) {
             config.Stylesheet = styles;
@@ -256,22 +255,22 @@ _.extend(ProjectLoader.prototype, Commons.Events, {
         });
     },
     _loadProjectStyle : function(dir, stylesheet) {
-        var promise = P();
+        var promise = Tilepin.P();
         var id;
         if (_.isString(stylesheet)) {
             id = stylesheet;
             var fullPath = Path.join(dir, stylesheet);
             if (Path.extname(fullPath) == '.js') {
-                promise = P().then(function() {
-                    Commons.IO.clearObject(fullPath);
-                    var obj = Commons.IO.loadObject(fullPath);
+                promise = Tilepin.P().then(function() {
+                    Tilepin.IO.clearObject(fullPath);
+                    var obj = Tilepin.IO.loadObject(fullPath);
                     return obj;
                 })
             } else {
-                promise = Commons.IO.readString(fullPath);
+                promise = Tilepin.IO.readString(fullPath);
             }
         } else {
-            promise = P(stylesheet.cartocss);
+            promise = Tilepin.P(stylesheet.cartocss);
             delete stylesheet.cartocss;
             id = stylesheet.id;
         }

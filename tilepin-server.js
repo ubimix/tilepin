@@ -1,14 +1,12 @@
 var express = require('express');
-var P = require('./tilepin-commons').P;
-var EventManager = require('./tilepin-commons').EventManager;
+var Tilepin = require('./lib/');
 var _ = require('underscore');
 var app = express();
 var Url = require('url');
 var FS = require('fs');
 var Path = require('path');
-var Commons = require('./tilepin-commons');
-var Tilepin = require('./tilepin');
-var TilepinCache = require('./tilepin-cache-redis');
+var tp = require('./tilepin');
+var tpCache = require('./tilepin-cache-redis');
 var MapExport = require('./tilepin-export');
 
 var workDir = process.cwd();
@@ -18,10 +16,10 @@ var config = loadConfig(workDir, [ 'tilepin.config.js', 'tilepin.config.json',
 var port = config.port || 8888;
 
 var redisOptions = config.redisOptions || {};
-var tileCache = new TilepinCache(redisOptions);
+var tileCache = new tpCache(redisOptions);
 
 var tmpFileDir = Path.join(workDir, 'tmp');
-var eventManager = new EventManager();
+var eventManager = new Tilepin.EventManager();
 var options = {
     eventManager : eventManager, // Centralized event manager
     cache : tileCache, // Redis cache
@@ -57,9 +55,9 @@ eventManager.on('getTile:end', trace);
 // eventManager.on('loadTileSource:setInCache', trace);
 // eventManager.on('clearTileSource:clearCache', trace);
 
-var tileProvider = new Tilepin.TilesProvider(options);
+var tileProvider = new tp.TilesProvider(options);
 
-var promise = P();
+var promise = Tilepin.P();
 promise = promise
 //
 .then(function initApplication(tileSource) {
@@ -191,7 +189,7 @@ promise = promise
 
 process.on('SIGTERM', function() {
     console.log("Closing...");
-    P().then(function() {
+    Tilepin.P().then(function() {
         app.close();
     }).then(function() {
         return tileProvider.close();
@@ -244,10 +242,10 @@ function sendReply(req, res, statusCode, content, headers) {
 }
 
 function loadConfig(workDir, configFiles) {
-    var file = Commons.IO.findExistingFile(_.map(configFiles, function(file) {
+    var file = Tilepin.IO.findExistingFile(_.map(configFiles, function(file) {
         return Path.join(workDir, file);
     }));
     if (!file)
         return {};
-    return Commons.IO.loadObject(file);
+    return Tilepin.IO.loadObject(file);
 }
