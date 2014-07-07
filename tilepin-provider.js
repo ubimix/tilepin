@@ -359,7 +359,6 @@ _.extend(TileSourceProvider.prototype, {
                     });
                     var result = renderer.render(jsonLoader.content, P
                             .nresolver(deferred));
-                    console.log('Carto RESULT:', result)
                     if (result) {
                         // In case of the synchroneous reply (Carto v0.11)
                         deferred.resolve(result);
