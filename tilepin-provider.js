@@ -180,9 +180,10 @@ _.extend(TileSourceProvider.prototype, {
     },
 
     clear : function(params) {
-        var dir = this._getMapnikConfigDir();
+        var that = this;
+        var dir = that._getMapnikConfigDir();
         return Tilepin.P.ninvoke(FS, 'readdir', dir).then(function(array) {
-            return Tilepin.P.all(_.map(array, function(name) {
+            var promises = _.map(array, function(name) {
                 if (!name.indexOf('project.tilepin.') == 0)
                     return;
                 var ext = Path.extname(name);
@@ -190,7 +191,17 @@ _.extend(TileSourceProvider.prototype, {
                     var file = Path.join(dir, name);
                     return Tilepin.IO.deleteFile(file);
                 }
-            }));
+            });
+            var project = that._project;
+            if (project) {
+                delete that._project;
+                promises.push(project.close().then(function() {
+                    return that._loadProject().then(function(project) {
+                        return project.open();
+                    });
+                }));
+            }
+            return Tilepin.P.all(promises);
         })
     },
 
