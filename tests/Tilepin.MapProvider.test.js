@@ -1,6 +1,6 @@
-var Tilepin = require('../lib/Tilepin.Project.js');
+var Tilepin = require('../lib/Tilepin.ProjectConfig.js');
 require('../lib/Tilepin.P');
-require('../lib/Tilepin.Project');
+require('../lib/Tilepin.ProjectConfig');
 require('../lib/Tilepin.MapProvider');
 
 var Mercator = new (require('sphericalmercator'));
@@ -117,7 +117,7 @@ describe('Tilepin.MapProvider', function() {
     function withRenderer(callback) {
         return function(done) {
             return Tilepin.P().then(function() {
-                var project = new Tilepin.Project({
+                var project = new Tilepin.ProjectConfig({
                     projectDir : projectDir,
                     projectFile : projectFile
                 });

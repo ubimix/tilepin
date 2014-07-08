@@ -1,4 +1,4 @@
-var Tilepin = require('../lib/Tilepin.Project.js');
+var Tilepin = require('../lib/Tilepin.ProjectConfig.js');
 require('../lib/Tilepin.P');
 
 var expect = require('expect.js');
@@ -16,11 +16,11 @@ function withProject(project, callback) {
     });
 }
 
-describe('Tilepin.Project', function() {
+describe('Tilepin.ProjectConfig', function() {
     it('should be able to load a project configuration', suite(function() {
         var projectDir = Path.join(__dirname,
                 'projects/01-simple-tilemill-project');
-        var project = new Tilepin.Project({
+        var project = new Tilepin.ProjectConfig({
             projectDir : projectDir,
         });
         expect(project).not.to.be(null);
@@ -44,7 +44,7 @@ describe('Tilepin.Project', function() {
             suite(function() {
                 var projectDir = Path.join(__dirname,
                         'projects/02-project-with-jsstyles');
-                var project = new Tilepin.Project({
+                var project = new Tilepin.ProjectConfig({
                     projectDir : projectDir,
                 });
                 return withProject(project, function(mml) {
@@ -62,7 +62,7 @@ describe('Tilepin.Project', function() {
     it('should be able to generate a Mapnik XML file', suite(function() {
         var projectDir = Path.join(__dirname,
                 'projects/02-project-with-jsstyles');
-        var project = new Tilepin.Project({
+        var project = new Tilepin.ProjectConfig({
             projectDir : projectDir,
         });
         var params = {};
@@ -90,7 +90,7 @@ describe('Tilepin.Project', function() {
             suite(function() {
                 var projectDir = Path.join(__dirname,
                         'projects/03-project-with-parameters');
-                var project = new Tilepin.Project({
+                var project = new Tilepin.ProjectConfig({
                     projectDir : projectDir,
                 });
                 return withProject(project, function() {
@@ -98,7 +98,7 @@ describe('Tilepin.Project', function() {
                         'q' : 'b'
                     };
                     var key = project.getCacheKey(params);
-                    var str = Tilepin.Project.toKey('B');
+                    var str = Tilepin.ProjectConfig.toKey('B');
                     expect(key).to.eql(str);
                 })
             }));
@@ -108,7 +108,7 @@ describe('Tilepin.Project', function() {
                 var projectDir = Path.join(__dirname,
                         'projects/03-project-with-parameters');
                 var handled = false;
-                var project = new Tilepin.Project({
+                var project = new Tilepin.ProjectConfig({
                     projectDir : projectDir,
                     handleDatalayer : function(args) {
                         handled = true;
@@ -139,7 +139,7 @@ describe('Tilepin.Project', function() {
                 var projectDir = Path.join(__dirname,
                         'projects/05-project-splitted-config');
                 var handled = false;
-                var project = new Tilepin.Project({
+                var project = new Tilepin.ProjectConfig({
                     projectDir : projectDir,
                     handleDatalayer : function(args) {
                         handled = true;

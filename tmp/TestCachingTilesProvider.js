@@ -97,10 +97,10 @@ describe('Tilepin.CachingTilesProvider '
 function getHash(buf) {
     return require('crypto').createHash('sha1').update(buf).digest('hex')
 }
-describe('Tilepin.ProjectBasedTilesProvider', function() {
+describe('Tilepin.ProjectConfigBasedTilesProvider', function() {
     it('should generate image tiles', function(done) {
         var dir = __dirname;
-        var provider = new Tilepin.ProjectBasedTilesProvider({
+        var provider = new Tilepin.ProjectConfigBasedTilesProvider({
             dir : dir
         });
         Tilepin.P().then(function() {

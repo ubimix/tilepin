@@ -256,7 +256,7 @@ _.extend(TileSourceProvider.prototype, {
                 var options = _.extend({}, that.options, {
                     projectDir : projectDir
                 });
-                that._project = new Tilepin.Project(options);
+                that._project = new Tilepin.ProjectConfig(options);
             }
             return that._project;
         });

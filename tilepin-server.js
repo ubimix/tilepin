@@ -160,6 +160,19 @@ promise = promise
         });
     }));
 
+    mask = '/service/:source([^]+)/.:service([^]+)';
+    app.get(mask, handleRequest(function(req, res) {
+        var source = req.params.source;
+        var service = req.params.service;
+        var params = {
+            source : source,
+            service : service
+        };
+        return mapExport.generateMap(params).then(function(result) {
+            return sendReply(req, res, 200, result.file, result.headers);
+        });
+    }));
+
     app.listen(port);
     console.log('Listening on port: ' + port);
     return true;

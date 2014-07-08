@@ -14,9 +14,8 @@
 * Tilepin.PgConnector.js - this class allows direct connection to Postgres DB.
   Used to create data endpoints which could be called directly to search
   information in DB.
-* Tilepin.Project.js - this module is responsible for loading and pre-processing 
-  configurations. This module has the following
-  features:
+* Tilepin.ProjectConfig.js - this module is responsible for loading and 
+  pre-processing configurations. This module has the following features:
   * It can load TileMill project descriptions
   * It transforms TileMill configurations to Mapnik XML configurations.
   * It allows to read configuration from multiple formats like Json

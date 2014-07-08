@@ -52,19 +52,21 @@ _.extend(MapExport.prototype, {
             var filePromiseIndex = that._filePromiseIndex || {};
             that._filePromiseIndex = filePromiseIndex;
             var promise = filePromiseIndex[outputFile];
-            if (!promise && FS.existsSync(outputFile)) {
+            if (!promise && FS.existsSync(outputFile) && !params.reload) {
                 promise = Tilepin.P();
             }
-            if (!promise) {
+            if (!promise || params.reload) {
                 promise = filePromiseIndex[outputFile] = // 
                 that.projectLoader.loadProject(params) // 
                 .then(function(uri) {
                     var options = _.extend({}, uri, size);
                     var map = new mapnik.Map(options.width, options.height);
                     map.extent = bbox;
-                    return Tilepin.P.ninvoke(map, 'fromString', options.xml, options)//
+                    return Tilepin.P//
+                    .ninvoke(map, 'fromString', options.xml, options)//
                     .then(function(map) {
-                        return Tilepin.P.ninvoke(map, 'renderFile', outputFile, {
+                        return Tilepin.P//
+                        .ninvoke(map, 'renderFile', outputFile, {
                             format : format,
                             scale : scale
                         });
@@ -103,3 +105,25 @@ _.extend(MapExport.prototype, {
     }
 
 })
+
+function withRenderer(params, action) {
+    return Tilepin.P().then(function() {
+        var project = new Tilepin.ProjectConfig({
+            projectDir : params.projectDir,
+            projectFile : params.projectFile
+        });
+        var params = {};
+        return Tilepin.P.fin(project.open().then(function(mml) {
+            return project.prepareProjectConfig(params)//
+            .then(function(options) {
+                var renderer = new Tilepin.MapProvider({
+                    xml : options.xml,
+                    base : params.projectDir
+                });
+                return action(renderer);
+            });
+        }), function() {
+            return project.close();
+        });
+    });
+}
