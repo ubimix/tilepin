@@ -23,15 +23,13 @@ _.extend(TilesProvider.prototype, Tilepin.Events, {
         var resetAll = true;
         var cacheKeys = [];
         return Tilepin.P().then(function() {
-            return that.tileSourceManager //
-            .loadTileSourceProvider(params) //
-            .then(function(provider) {
-                return that._getFormats(params).then(function(formats) {
-                    return Tilepin.P.all(_.map(formats, function(format) {
-                        var cacheKey = provider.getCacheKey(params, format);
-                        cacheKeys.push(cacheKey);
-                    }));
-                });
+            return that.tileSourceManager.loadTileSourceProvider(params);
+        }).then(function(provider) {
+            return that._getFormats(params).then(function(formats) {
+                return Tilepin.P.all(_.map(formats, function(format) {
+                    var cacheKey = provider.getCacheKey(params, format);
+                    cacheKeys.push(cacheKey);
+                }));
             });
         }).then(
                 function() {
@@ -80,21 +78,23 @@ _.extend(TilesProvider.prototype, Tilepin.Events, {
                 });
             })
         }
-        return that.tileSourceManager.loadTileSourceProvider(params).then(
-                function(provider) {
-                    // TODO: replace it by caching timeout
-                    if (!provider.isDynamicSource()) {
-                        return loadCached(provider, params);
-                    } else {
-                        return loadNonCached(provider, params);
-                    }
-                });
+        return Tilepin.P().then(function() {
+            return that.tileSourceManager.loadTileSourceProvider(params);
+        }).then(function(provider) {
+            // TODO: replace it by caching timeout
+            if (!provider.isDynamicSource()) {
+                return loadCached(provider, params);
+            } else {
+                return loadNonCached(provider, params);
+            }
+        });
     },
 
     loadInfo : function(params) {
         var that = this;
-        return that.tileSourceManager.loadTileSourceProvider(params) //
-        .then(function(provider) {
+        return Tilepin.P().then(function() {
+            return that.tileSourceManager.loadTileSourceProvider(params);
+        }).then(function(provider) {
             return provider.prepareTileSource(params);
         }).then(function(tileSource) {
             return Tilepin.P.ninvoke(tileSource, 'getInfo');

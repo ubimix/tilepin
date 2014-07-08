@@ -132,16 +132,15 @@ _.extend(TileSourceProvider.prototype, {
         // FIXME: add expiration of individual requests
         var promise = that._promises.get(id);
         if (!promise) {
-            promise = that._loadMapnikConfig(params, id) // 
-            .then(function(uri) {
-                return that._loadTileliveSourceUri(uri, params);
-            }) // 
-            .then(function(uri) {
-                return Tilepin.P.ninvoke(Tilelive, 'load', uri);
-            }) //
-            .then(function(tileSource) {
-                return that._wrapTileSource(tileSource, params);
-            }, function(err) {
+            promise = Tilepin.P().then(function() {
+                return that._loadMapnikConfig(params, id).then(function(uri) {
+                    return that._loadTileliveSourceUri(uri, params);
+                }).then(function(uri) {
+                    return Tilepin.P.ninvoke(Tilelive, 'load', uri);
+                }).then(function(tileSource) {
+                    return that._wrapTileSource(tileSource, params);
+                });
+            }).then(null, function(err) {
                 that._promises.del(id);
                 throw err;
             });
@@ -182,7 +181,9 @@ _.extend(TileSourceProvider.prototype, {
     clear : function(params) {
         var that = this;
         var dir = that._getMapnikConfigDir();
-        return Tilepin.P.ninvoke(FS, 'readdir', dir).then(function(array) {
+        return Tilepin.P().then(function() {
+            return Tilepin.P.ninvoke(FS, 'readdir', dir);
+        }).then(function(array) {
             var promises = _.map(array, function(name) {
                 if (!name.indexOf('project.tilepin.') == 0)
                     return;
@@ -207,7 +208,9 @@ _.extend(TileSourceProvider.prototype, {
 
     open : function() {
         var that = this;
-        return that._loadProject().then(function(project) {
+        return Tilepin.P().then(function() {
+            return that._loadProject();
+        }).then(function(project) {
             return project.open();
         }).then(function() {
             return that;
@@ -234,15 +237,12 @@ _.extend(TileSourceProvider.prototype, {
     _unloadProject : function() {
         var that = this;
         return Tilepin.P().then(function() {
-            var p = that._projectPromise;
-            if (p) {
-                delete that._projectPromise;
-                return p.then(function(project) {
-                    delete that._project;
-                    return project.close();
-                });
-            }
+            var project = that._project;
             delete that._project;
+            delete that._projectPromise;
+            if (project) {
+                return project.close();
+            }
         })
     },
 
@@ -263,7 +263,8 @@ _.extend(TileSourceProvider.prototype, {
                 var msg = 'Project file not found (';
                 msg += names.join(' / ');
                 msg += '). Dir: "' + projectDir + '".';
-                throw new Error(msg);
+                var err = new Error(msg);
+                throw err;
             }
             var options = _.extend({}, that.options, {
                 projectDir : projectDir,
@@ -322,7 +323,9 @@ _.extend(TileSourceProvider.prototype, {
 
     _loadMapnikConfig : function(params, id) {
         var that = this;
-        return that._loadProject().then(function(project) {
+        return Tilepin.P().then(function() {
+            return that._loadProject();
+        }).then(function(project) {
             var configFileBase = that._getMapnikConfigFileBase(id);
             var configFileDir = that._getMapnikConfigDir();
             var configFile = configFileBase + '.xml';
@@ -356,18 +359,22 @@ _.extend(TileSourceProvider.prototype, {
                         if (!vectorTilesParams || !vectorTilesParams.length)
                             return uri;
 
+                        function loadTileSource(prm) {
+                            return Tilepin.P().then(function() {
+                                return manager.loadTileSourceProvider(prm) //
+                                .then(function(provider) {
+                                    return provider.prepareTileSource(prm) //
+                                    .then(function(tileSource) {
+                                        tileSource.sourceKey = prm.source;
+                                        return tileSource;
+                                    });
+                                });
+                            });
+                        }
                         var manager = that.options.sourceManager;
                         return Tilepin.P.all(
-                                _.map(vectorTilesParams, function(prm) {
-                                    return manager.loadTileSourceProvider(prm) //
-                                    .then(function(provider) {
-                                        return provider.prepareTileSource(prm) //
-                                        .then(function(tileSource) {
-                                            tileSource.sourceKey = prm.source;
-                                            return tileSource;
-                                        });
-                                    });
-                                })).then(
+                                _.map(vectorTilesParams, loadTileSource))//
+                        .then(
                                 function(tileSources) {
                                     var tileSource = new CompositeTileSource(
                                             tileSources);

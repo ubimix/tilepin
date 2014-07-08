@@ -70,25 +70,23 @@ promise = promise
     var mask;
 
     mask = '/tiles/invalidate/:source([^]+)'
-    app.get(mask, function(req, res) {
+    app.get(mask, handleRequest(function(req, res) {
         var formats = req.query['formats'];
         if (formats) {
             formats = formats.split(/[,;]/gim)
         } else {
             formats = undefined;
         }
-        tileProvider.invalidate({
+        return tileProvider.invalidate({
             formats : formats,
             source : req.param('source')
         }).then(function(result) {
             sendReply(req, res, 200, 'OK');
-        }, function(err) {
-            sendError(req, res, err);
-        }).done();
-    });
+        });
+    }));
 
     mask = '/tiles/:source([^]+)/:z/:x/:y.:format(png|grid.json|vtile)';
-    app.get(mask, function(req, res) {
+    app.get(mask, handleRequest(function(req, res) {
         var format = req.params.format;
         var conf = _.extend({}, req.query, {
             source : req.params.source,
@@ -97,15 +95,13 @@ promise = promise
             x : +req.params.x,
             y : +req.params.y,
         });
-        tileProvider.loadTile(conf).then(function(result) {
+        return tileProvider.loadTile(conf).then(function(result) {
             sendReply(req, res, 200, result.tile, result.headers);
-        }, function(err) {
-            sendError(req, res, err);
-        }).done();
-    });
+        });
+    }));
 
     mask = '/tiles/:source([^]+)';
-    app.get(mask, function(req, res) {
+    app.get(mask, handleRequest(function(req, res) {
         var format = req.param('format');
         var source = req.param('source');
         var fullUrl = req.protocol + '://' + req.get('host') + req.originalUrl;
@@ -120,7 +116,7 @@ promise = promise
             format : format || 'vtile',
             source : source
         };
-        tileProvider.loadInfo(options).then(function(result) {
+        return tileProvider.loadInfo(options).then(function(result) {
             result.tilejson = "2.0.0";
             result.format = 'pbf';
             result.id = source;
@@ -138,21 +134,13 @@ promise = promise
                 id : result.interactivity_layer
             } ]
             sendReply(req, res, 200, result);
-        }, function(err) {
-            sendError(req, res, err);
-        }).done();
-
-        // sendReply(req, res, 200, {
-        // tilejson : "2.0.0",
-        // tiles : [ tilesMask + '.png' ],
-        // vector_layers : [ tilesMask + '.vtile' ]
-        // })
-    })
+        });
+    }));
 
     mask = '/export/:source([^]+)/:zoom/' //
             + ':west,:south,:east,:north' //
             + '/:file.:format(svg|pdf|png)';
-    app.get(mask, function(req, res) {
+    app.get(mask, handleRequest(function(req, res) {
         var source = req.params.source;
         var format = req.params.format;
         var zoom = req.params.zoom;
@@ -168,11 +156,9 @@ promise = promise
             file : file
         };
         return mapExport.generateMap(params).then(function(result) {
-            sendReply(req, res, 200, result.file, result.headers);
-        }, function(err) {
-            sendError(req, res, err);
-        }).done();
-    });
+            return sendReply(req, res, 200, result.file, result.headers);
+        });
+    }));
 
     app.listen(port);
     console.log('Listening on port: ' + port);
@@ -197,6 +183,16 @@ process.on('SIGTERM', function() {
         console.log("Server is down.");
     }).done();
 });
+
+function handleRequest(action) {
+    return function(req, res) {
+        return Tilepin.P().then(function() {
+            return action(req, res);
+        }).then(null, function(err) {
+            sendError(req, res, err);
+        }).done();
+    }
+}
 
 function sendError(req, res, err) {
     var statusCode = 400;
