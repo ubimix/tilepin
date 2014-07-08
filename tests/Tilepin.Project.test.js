@@ -20,10 +20,8 @@ describe('Tilepin.Project', function() {
     it('should be able to load a project configuration', suite(function() {
         var projectDir = Path.join(__dirname,
                 'projects/01-simple-tilemill-project');
-        var projectFile = Path.join(projectDir, 'project.mml');
         var project = new Tilepin.Project({
             projectDir : projectDir,
-            projectFile : projectFile
         });
         expect(project).not.to.be(null);
         return withProject(project, function(mml) {
@@ -48,7 +46,6 @@ describe('Tilepin.Project', function() {
                         'projects/02-project-with-jsstyles');
                 var project = new Tilepin.Project({
                     projectDir : projectDir,
-                    projectFile : Path.join(projectDir, 'project.mml')
                 });
                 return withProject(project, function(mml) {
                     var stylesheets = mml.Stylesheet;
@@ -67,7 +64,6 @@ describe('Tilepin.Project', function() {
                 'projects/02-project-with-jsstyles');
         var project = new Tilepin.Project({
             projectDir : projectDir,
-            projectFile : Path.join(projectDir, 'project.mml')
         });
         var params = {};
         return withProject(project, function() {
@@ -96,7 +92,6 @@ describe('Tilepin.Project', function() {
                         'projects/03-project-with-parameters');
                 var project = new Tilepin.Project({
                     projectDir : projectDir,
-                    projectFile : Path.join(projectDir, 'project.mml')
                 });
                 return withProject(project, function() {
                     var params = {
@@ -115,7 +110,6 @@ describe('Tilepin.Project', function() {
                 var handled = false;
                 var project = new Tilepin.Project({
                     projectDir : projectDir,
-                    projectFile : Path.join(projectDir, 'project.mml'),
                     handleDatalayer : function(args) {
                         handled = true;
                     }
@@ -136,6 +130,48 @@ describe('Tilepin.Project', function() {
                                         + value + ']]>' + '</Parameter>';
                                 expect(options.xml.indexOf(str) > 0).to
                                         .be(true);
+                            });
+                })
+            }));
+
+    it('should be able to read separate configurations for data and styles',
+            suite(function() {
+                var projectDir = Path.join(__dirname,
+                        'projects/05-project-splitted-config');
+                var handled = false;
+                var project = new Tilepin.Project({
+                    projectDir : projectDir,
+                    handleDatalayer : function(args) {
+                        handled = true;
+                    }
+                });
+                return withProject(project, function() {
+                    var params = {
+                        'q' : 'hello, world!'
+                    };
+                    var value = params.q.toUpperCase();
+                    return project.prepareProjectConfig(params).then(
+                            function(options) {
+                                expect(handled).to.eql(true);
+                                expect(options.config.Layer[0].Datasource.q).to
+                                        .eql(value);
+                                // A new parameter added to the datalayer by a
+                                // project handler method
+                                var str = '<Parameter name="q">' + '<![CDATA['
+                                        + value + ']]>' + '</Parameter>';
+                                expect(options.xml.indexOf(str) > 0).to
+                                        .be(true);
+
+                                expect(options.config.Stylesheet).not.to
+                                        .eql(null);
+                                expect(options.config.Stylesheet.length).to
+                                        .eql(1);
+                                expect(options.config.Stylesheet[0].id).to
+                                        .eql('style.mss');
+                                var str = options.config.Stylesheet[0].data;
+                                var control = FS.readFileSync(Path.join(
+                                        projectDir, 'style.mss'), 'UTF-8');
+                                expect(str).to.eql(control);
                             });
                 })
             }));

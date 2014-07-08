@@ -1,0 +1,7 @@
+handler : handler.js
+Layer: 
+  - Datasource:
+      file : http://www.naturalearthdata.com/http//www.naturalearthdata.com/download/110m/cultural/ne_110m_admin_0_countries.zip
+      type : shape
+    id : country-shapes-110m 
+    name : country-shapes-110m
