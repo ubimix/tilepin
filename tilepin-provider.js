@@ -251,29 +251,14 @@ _.extend(TileSourceProvider.prototype, {
         var that = this;
         return that._projectPromise = that._projectPromise || Tilepin.P()//
         .then(function() {
-            if (that._project)
-                return;
-            var projectDir = that._getProjectDir();
-            var names = [ 'project.yml', 'project.mml' ];
-            var projectFiles = _.map(names, function(file) {
-                return Path.join(projectDir, file);
-            });
-            var projectFile = Tilepin.IO.findExistingFile(projectFiles);
-            if (!projectFile) {
-                var msg = 'Project file not found (';
-                msg += names.join(' / ');
-                msg += '). Dir: "' + projectDir + '".';
-                var err = new Error(msg);
-                throw err;
+            if (!that._project) {
+                var projectDir = that._getProjectDir();
+                var options = _.extend({}, that.options, {
+                    projectDir : projectDir
+                });
+                that._project = new Tilepin.Project(options);
             }
-            var options = _.extend({}, that.options, {
-                projectDir : projectDir,
-                projectFile : projectFile
-            });
-            that._project = new Tilepin.Project(options);
             return that._project;
-        }).then(function() {
-            return that._getProject();
         });
     },
 

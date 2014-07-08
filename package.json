@@ -30,7 +30,8 @@
         "sphericalmercator" : "~1.0.2",
         "tilejson" : "*",
         "underscore" : "~1.4.4",
-        "when" : "*"
+        "when" : "*",
+        "pg.js" : "*"
     },
     "devDependencies" : {
         "mocha" : "*",
