@@ -168,6 +168,10 @@ promise = promise
             source : source,
             service : service
         };
+        // * Load config corresponding to the specified source
+        // * Load an endpoint description for the specified service
+        // * Pre-process query for specified parameters 
+        // * Launch the query and return results
         return mapExport.generateMap(params).then(function(result) {
             return sendReply(req, res, 200, result.file, result.headers);
         });

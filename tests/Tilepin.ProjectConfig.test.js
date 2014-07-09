@@ -6,25 +6,44 @@ var _ = require('underscore');
 var FS = require('fs');
 var Path = require('path');
 
-var options = {
-    dir : __dirname
-};
-
-function withProject(project, callback) {
-    return Tilepin.P.fin(project.open().then(callback), function() {
-        return project.close();
-    });
-}
-
 describe('Tilepin.ProjectConfig', function() {
+    it('should manage specific extensions', suite(function() {
+        var projectDir = Path.join(__dirname,
+                'projects/01-simple-tilemill-project');
+        var config = new Tilepin.ProjectConfig({
+            projectDir : projectDir,
+        });
+        var mapnikConfig;
+        return openConfig(config, function() {
+            return Tilepin.P()//
+            .then(function() {
+                // Check that the configuration is able to return a new adapter
+                return config.getAdapter(Tilepin.MapnikConfig)//
+                .then(function(c) {
+                    mapnikConfig = c;
+                    expect(mapnikConfig).not.to.eql(undefined);
+                    expect(mapnikConfig).not.to.eql(null);
+                });
+            })//
+            .then(function() {
+                // The second time the project should return the same adapter
+                // instance
+                return config.getAdapter(Tilepin.MapnikConfig)//
+                .then(function(test) {
+                    expect(test).to.be(mapnikConfig);
+                });
+            })
+        });
+    }));
+
     it('should be able to load a project configuration', suite(function() {
         var projectDir = Path.join(__dirname,
                 'projects/01-simple-tilemill-project');
-        var project = new Tilepin.ProjectConfig({
+        var config = new Tilepin.ProjectConfig({
             projectDir : projectDir,
         });
-        expect(project).not.to.be(null);
-        return withProject(project, function(mml) {
+        expect(config).not.to.be(null);
+        return openConfig(config, function(mml) {
             expect(mml).not.to.be(null);
             expect(_.isArray(mml.Layer)).to.be(true);
             expect(mml.Layer.length).to.be(1);
@@ -35,7 +54,7 @@ describe('Tilepin.ProjectConfig', function() {
             expectedFile = Path.join(projectDir, expectedFile);
             expect(datasource.file).to.eql(expectedFile);
 
-            var test = project.getProjectConfig();
+            var test = config.getProjectConfig();
             expect(test).to.be(mml);
         })
     }));
@@ -44,10 +63,10 @@ describe('Tilepin.ProjectConfig', function() {
             suite(function() {
                 var projectDir = Path.join(__dirname,
                         'projects/02-project-with-jsstyles');
-                var project = new Tilepin.ProjectConfig({
+                var config = new Tilepin.ProjectConfig({
                     projectDir : projectDir,
                 });
-                return withProject(project, function(mml) {
+                return openConfig(config, function(mml) {
                     var stylesheets = mml.Stylesheet;
                     expect(stylesheets).not.to.be(null);
                     expect(stylesheets.length).to.be(1);
@@ -62,12 +81,12 @@ describe('Tilepin.ProjectConfig', function() {
     it('should be able to generate a Mapnik XML file', suite(function() {
         var projectDir = Path.join(__dirname,
                 'projects/02-project-with-jsstyles');
-        var project = new Tilepin.ProjectConfig({
+        var config = new Tilepin.ProjectConfig({
             projectDir : projectDir,
         });
         var params = {};
-        return withProject(project, function() {
-            return project.prepareProjectConfig(params) //
+        return openConfig(config, function() {
+            return config.prepareProjectConfig(params) //
             .then(
                     function(options) {
                         expect(options).not.to.be(null);
@@ -90,14 +109,14 @@ describe('Tilepin.ProjectConfig', function() {
             suite(function() {
                 var projectDir = Path.join(__dirname,
                         'projects/03-project-with-parameters');
-                var project = new Tilepin.ProjectConfig({
+                var config = new Tilepin.ProjectConfig({
                     projectDir : projectDir,
                 });
-                return withProject(project, function() {
+                return openConfig(config, function() {
                     var params = {
                         'q' : 'b'
                     };
-                    var key = project.getCacheKey(params);
+                    var key = config.getCacheKey(params);
                     var str = Tilepin.ProjectConfig.toKey('B');
                     expect(key).to.eql(str);
                 })
@@ -108,24 +127,24 @@ describe('Tilepin.ProjectConfig', function() {
                 var projectDir = Path.join(__dirname,
                         'projects/03-project-with-parameters');
                 var handled = false;
-                var project = new Tilepin.ProjectConfig({
+                var config = new Tilepin.ProjectConfig({
                     projectDir : projectDir,
                     handleDatalayer : function(args) {
                         handled = true;
                     }
                 });
-                return withProject(project, function() {
+                return openConfig(config, function() {
                     var params = {
                         'q' : 'hello, world!'
                     };
                     var value = params.q.toUpperCase();
-                    return project.prepareProjectConfig(params).then(
+                    return config.prepareProjectConfig(params).then(
                             function(options) {
                                 expect(handled).to.eql(true);
                                 expect(options.config.Layer[0].Datasource.q).to
                                         .eql(value);
                                 // A new parameter added to the datalayer by a
-                                // project handler method
+                                // config handler method
                                 var str = '<Parameter name="q">' + '<![CDATA['
                                         + value + ']]>' + '</Parameter>';
                                 expect(options.xml.indexOf(str) > 0).to
@@ -139,18 +158,18 @@ describe('Tilepin.ProjectConfig', function() {
                 var projectDir = Path.join(__dirname,
                         'projects/05-project-splitted-config');
                 var handled = false;
-                var project = new Tilepin.ProjectConfig({
+                var config = new Tilepin.ProjectConfig({
                     projectDir : projectDir,
                     handleDatalayer : function(args) {
                         handled = true;
                     }
                 });
-                return withProject(project, function() {
+                return openConfig(config, function() {
                     var params = {
                         'q' : 'hello, world!'
                     };
                     var value = params.q.toUpperCase();
-                    return project.prepareProjectConfig(params).then(
+                    return config.prepareProjectConfig(params).then(
                             function(options) {
                                 expect(handled).to.eql(true);
                                 expect(options.config.Layer[0].Datasource.q).to
@@ -177,6 +196,11 @@ describe('Tilepin.ProjectConfig', function() {
             }));
 })
 
+function openConfig(config, callback) {
+    return Tilepin.P.fin(config.open().then(callback), function() {
+        return config.close();
+    });
+}
 function suite(test) {
     return function(done) {
         return Tilepin.P().then(test).then(done, function(err) {
