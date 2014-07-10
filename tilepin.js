@@ -31,16 +31,11 @@ _.extend(TilesProvider.prototype, Tilepin.Events, {
                     cacheKeys.push(cacheKey);
                 }));
             });
-        }).then(
-                function() {
-                    return Tilepin.P.all([ invalidateCache(),
-                            clearTileSourceProvider() ]);
-                },
-                function(err) {
-                    return Tilepin.P.all([ invalidateCache(),
-                            clearTileSourceProvider() ]);
-                    throw err;
-                });
+        }).then(function() {
+            var promises = [ invalidateCache(), clearTileSourceProvider() ];
+            return Tilepin.P.all(promises);
+        });
+        
         function invalidateCache() {
             if (cacheKeys.length) {
                 return Tilepin.P.all(_.map(cacheKeys, function(cacheKey) {

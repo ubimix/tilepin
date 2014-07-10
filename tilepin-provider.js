@@ -178,6 +178,23 @@ _.extend(TileSourceProvider.prototype, {
         return key;
     },
 
+    _getCacheId : function(params) {
+        var that = this;
+        var mapnikAdapter = that._project
+                .getAdapter(Tilepin.ConfigAdapter.MapnikAdapter);
+        var suffix = mapnikAdapter.getMapnikCacheKey(params);
+        if (suffix != '') {
+            suffix = '-' + suffix;
+        } else {
+            suffix = '';
+        }
+        var type = that._isVectorTileRequested(params) ? '-a' : '-b';
+        var sourceKey = that._getSourceKey();
+        var id = sourceKey + type + suffix;
+        id = require('crypto').createHash('sha1').update(id).digest('hex')
+        return id;
+    },
+
     clear : function(params) {
         var that = this;
         var dir = that._getMapnikConfigDir();
@@ -193,15 +210,12 @@ _.extend(TileSourceProvider.prototype, {
                     return Tilepin.IO.deleteFile(file);
                 }
             });
-            var project = that._project;
-            if (project) {
-                delete that._project;
-                promises.push(project.close().then(function() {
-                    return that._loadProject().then(function(project) {
-                        return project.open();
-                    });
-                }));
-            }
+            promises.push(that._unloadProject().then(function() {
+                // Re-open the project
+                return that._loadProject().then(function(project) {
+                    return project.open();
+                });
+            }));
             return Tilepin.P.all(promises);
         })
     },
@@ -263,27 +277,8 @@ _.extend(TileSourceProvider.prototype, {
     },
 
     _getConfig : function(deepCopy) {
-        var config = this._project.getProjectConfig();
-        if (deepCopy === true) {
-            config = JSON.parse(JSON.stringify(config));
-        }
+        var config = this._project.getConfigObject(deepCopy);
         return config;
-    },
-
-    _getCacheId : function(params) {
-        var that = this;
-        var project = that._project;
-        var suffix = project.getCacheKey(params);
-        if (suffix != '') {
-            suffix = '-' + suffix;
-        } else {
-            suffix = '';
-        }
-        var type = that._isVectorTileRequested(params) ? '-a' : '-b';
-        var sourceKey = that._getSourceKey();
-        var id = sourceKey + type + suffix;
-        id = require('crypto').createHash('sha1').update(id).digest('hex')
-        return id;
     },
 
     _isRemoteSource : function() {
@@ -314,7 +309,10 @@ _.extend(TileSourceProvider.prototype, {
             var configFileBase = that._getMapnikConfigFileBase(id);
             var configFileDir = that._getMapnikConfigDir();
             var configFile = configFileBase + '.xml';
-            return project.prepareProjectConfig(params).then(function(config) {
+            var mapnikAdapter = that._project//
+            .getAdapter(Tilepin.ConfigAdapter.MapnikAdapter);
+            return mapnikAdapter.prepareMapnikConfig(params)//
+            .then(function(config) {
                 return _.extend({}, config, {
                     base : configFileDir,
                     pathname : configFile,
