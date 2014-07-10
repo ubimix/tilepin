@@ -123,8 +123,10 @@ describe('Tilepin.MapProvider', function() {
                 });
                 expect(project).not.to.be(null);
                 var params = {};
-                return Tilepin.P.fin(project.open().then(function(mml) {
-                    return project.prepareProjectConfig(params)//
+                return Tilepin.P.fin(project.open().then(function() {
+                    var mapnikAdapter = project //
+                    .getAdapter(Tilepin.ConfigAdapter.MapnikAdapter);
+                    return mapnikAdapter.prepareMapnikConfig(params) // 
                     .then(function(options) {
                         var renderer = new Tilepin.MapProvider({
                             xml : options.xml,
