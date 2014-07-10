@@ -13,25 +13,20 @@ describe('Tilepin.ProjectConfig', function() {
         var config = new Tilepin.ProjectConfig({
             projectDir : projectDir,
         });
-        var mapnikConfig;
         return openConfig(config, function() {
             return Tilepin.P()//
             .then(function() {
                 // Check that the configuration is able to return a new adapter
-                return config.getAdapter(Tilepin.MapnikConfig)//
-                .then(function(c) {
-                    mapnikConfig = c;
-                    expect(mapnikConfig).not.to.eql(undefined);
-                    expect(mapnikConfig).not.to.eql(null);
-                });
-            })//
-            .then(function() {
+                var adapter = config//
+                .getAdapter(Tilepin.ConfigAdapter.MapnikAdapter);
+                expect(adapter).not.to.eql(undefined);
+                expect(adapter).not.to.eql(null);
+
                 // The second time the project should return the same adapter
                 // instance
-                return config.getAdapter(Tilepin.MapnikConfig)//
-                .then(function(test) {
-                    expect(test).to.be(mapnikConfig);
-                });
+                var test = config//
+                .getAdapter(Tilepin.ConfigAdapter.MapnikAdapter);
+                expect(test).to.be(adapter);
             })
         });
     }));
@@ -43,7 +38,8 @@ describe('Tilepin.ProjectConfig', function() {
             projectDir : projectDir,
         });
         expect(config).not.to.be(null);
-        return openConfig(config, function(mml) {
+        return openConfig(config, function() {
+            var mml = config.getConfigObject();
             expect(mml).not.to.be(null);
             expect(_.isArray(mml.Layer)).to.be(true);
             expect(mml.Layer.length).to.be(1);
@@ -54,7 +50,7 @@ describe('Tilepin.ProjectConfig', function() {
             expectedFile = Path.join(projectDir, expectedFile);
             expect(datasource.file).to.eql(expectedFile);
 
-            var test = config.getProjectConfig();
+            var test = config.getConfigObject();
             expect(test).to.be(mml);
         })
     }));
@@ -66,7 +62,8 @@ describe('Tilepin.ProjectConfig', function() {
                 var config = new Tilepin.ProjectConfig({
                     projectDir : projectDir,
                 });
-                return openConfig(config, function(mml) {
+                return openConfig(config, function() {
+                    var mml = config.getConfigObject();
                     var stylesheets = mml.Stylesheet;
                     expect(stylesheets).not.to.be(null);
                     expect(stylesheets.length).to.be(1);
@@ -86,7 +83,15 @@ describe('Tilepin.ProjectConfig', function() {
         });
         var params = {};
         return openConfig(config, function() {
-            return config.prepareProjectConfig(params) //
+            var mapnikAdapter = config
+                    .getAdapter(Tilepin.ConfigAdapter.MapnikAdapter);
+            expect(mapnikAdapter).not.to.eql(undefined);
+            expect(mapnikAdapter).not.to.eql(null);
+            var cacheKey = mapnikAdapter.getMapnikCacheKey();
+            expect(!!cacheKey).to.be(true);
+            var emptySha1 = 'da39a3ee5e6b4b0d3255bfef95601890afd80709';
+            expect(cacheKey).to.eql(emptySha1);
+            return mapnikAdapter.prepareMapnikConfig(params) // 
             .then(
                     function(options) {
                         expect(options).not.to.be(null);
@@ -116,9 +121,11 @@ describe('Tilepin.ProjectConfig', function() {
                     var params = {
                         'q' : 'b'
                     };
-                    var key = config.getCacheKey(params);
-                    var str = Tilepin.ProjectConfig.toKey('B');
-                    expect(key).to.eql(str);
+                    var mapnikAdapter = config
+                            .getAdapter(Tilepin.ConfigAdapter.MapnikAdapter);
+                    var cacheKey = mapnikAdapter.getMapnikCacheKey(params);
+                    var str = Tilepin.ConfigAdapter.getHash('B');
+                    expect(cacheKey).to.eql(str);
                 })
             }));
 
@@ -138,7 +145,10 @@ describe('Tilepin.ProjectConfig', function() {
                         'q' : 'hello, world!'
                     };
                     var value = params.q.toUpperCase();
-                    return config.prepareProjectConfig(params).then(
+                    var mapnikAdapter = config
+                            .getAdapter(Tilepin.ConfigAdapter.MapnikAdapter);
+                    return mapnikAdapter.prepareMapnikConfig(params) // 
+                    .then(
                             function(options) {
                                 expect(handled).to.eql(true);
                                 expect(options.config.Layer[0].Datasource.q).to
@@ -169,7 +179,10 @@ describe('Tilepin.ProjectConfig', function() {
                         'q' : 'hello, world!'
                     };
                     var value = params.q.toUpperCase();
-                    return config.prepareProjectConfig(params).then(
+                    var mapnikAdapter = config
+                            .getAdapter(Tilepin.ConfigAdapter.MapnikAdapter);
+                    return mapnikAdapter.prepareMapnikConfig(params) // 
+                    .then(
                             function(options) {
                                 expect(handled).to.eql(true);
                                 expect(options.config.Layer[0].Datasource.q).to
