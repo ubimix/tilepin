@@ -1,5 +1,4 @@
 var Tilepin = require('../lib/Tilepin.Carto.Styles.js');
-require('../lib/Tilepin.P');
 var expect = require('expect.js');
 var _ = require('underscore');
 

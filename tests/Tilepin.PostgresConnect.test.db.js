@@ -1,5 +1,4 @@
 var Tilepin = require('../lib/Tilepin.ProjectConfig.js');
-require('../lib/Tilepin.P');
 require('../lib/Tilepin.PgConnector');
 
 var expect = require('expect.js');
