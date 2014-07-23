@@ -11,8 +11,6 @@ var tpCache = require('./tilepin-cache-redis');
 var MapExport = require('./tilepin-export');
 var events = require('events');
 
-
-
 var workDir = process.cwd();
 var config = loadConfig(workDir, [ 'tilepin.config.js', 'tilepin.config.json',
         'config.js', 'config.json' ]);
@@ -164,11 +162,20 @@ promise = promise
         });
     }));
 
-    mask = '/service/:service([^]+)';
     var serviceOptions = _.extend({}, options, {
         path : '/service'
     });
     var handlerProvider = new Tilepin.ServiceStubProvider(serviceOptions);
+
+    mask = '/service/:service([^]*).invalidate';
+    app.get(mask, handleRequest(function(req, res) {
+        var path = Mosaic.ApiDescriptor.HttpServerStub.getPath(req);
+        return handlerProvider.removeEndpoint(path).then(function() {
+            return sendReply(req, res, 200, 'OK');
+        });
+    }));
+
+    mask = '/service/:service([^]*)';
     app.get(mask, handleRequest(function(req, res) {
         var path = Mosaic.ApiDescriptor.HttpServerStub.getPath(req);
         return handlerProvider.loadEndpoint(path).then(function(handler) {
