@@ -12,7 +12,7 @@ var MapExport = require('./tilepin-export');
 var events = require('events');
 
 var workDir = process.cwd();
-var config = loadConfig(workDir, [ 'tilepin.config.js', 'tilepin.config.json',
+var config = loadConfig(workDir, [ 'tilepin.config.json', 'tilepin.config.js',
         'config.js', 'config.json' ]);
 
 var port = config.port || 8888;
@@ -22,11 +22,19 @@ var tileCache = new tpCache(redisOptions);
 
 var tmpFileDir = Path.join(workDir, 'tmp');
 var eventEmitter = new events.EventEmitter();
+
+var dbConfig = config.db || {};
 var options = {
     eventEmitter : eventEmitter, // Centralized event manager
     cache : tileCache, // Redis cache
     dir : workDir, // Working directory containing map layers
     tmpDir : tmpFileDir, // Used to generate PDF/SVG maps
+
+    config : config,
+    getDbCredentials : function(sourceKey) {
+        return _.defaults({}, dbConfig[sourceKey], dbConfig['*']);
+    },
+
     handleDatalayer : function(options) {
         var dataLayer = options.dataLayer;
         if (dataLayer.Datasource && dataLayer.Datasource.type == 'postgis') {
