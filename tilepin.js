@@ -11,11 +11,11 @@ function TilesProvider(options) {
     this.options = options || {};
     this.cache = options.cache || new MemCache();
     this.tileSourceManager = new TileSourceManager(this.options);
-    var eventManager = this._getEventManager();
+    var eventEmitter = this._getEventEmitter();
     Tilepin.Events.Mixin.addEventTracing(this, [ 'invalidate', 'loadTile',
-            'loadInfo' ], eventManager);
+            'loadInfo' ], eventEmitter);
 }
-_.extend(TilesProvider.prototype, Tilepin.Events, {
+_.extend(TilesProvider.prototype, {
 
     invalidate : function(params) {
         var that = this;
@@ -35,7 +35,7 @@ _.extend(TilesProvider.prototype, Tilepin.Events, {
             var promises = [ invalidateCache(), clearTileSourceProvider() ];
             return Tilepin.P.all(promises);
         });
-        
+
         function invalidateCache() {
             if (cacheKeys.length) {
                 return Tilepin.P.all(_.map(cacheKeys, function(cacheKey) {
@@ -113,9 +113,9 @@ _.extend(TilesProvider.prototype, Tilepin.Events, {
         }
         return key;
     },
-    _getEventManager : function() {
-        var eventManager = this.options.eventManager || this;
-        return eventManager;
+    _getEventEmitter : function() {
+        var eventEmitter = this.options.eventEmitter || this;
+        return eventEmitter;
     },
     _forceTileInvalidation : function(params) {
         return !!params.reload;

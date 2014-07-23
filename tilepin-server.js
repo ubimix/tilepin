@@ -8,6 +8,7 @@ var Path = require('path');
 var tp = require('./tilepin');
 var tpCache = require('./tilepin-cache-redis');
 var MapExport = require('./tilepin-export');
+var events = require('events');
 
 var workDir = process.cwd();
 var config = loadConfig(workDir, [ 'tilepin.config.js', 'tilepin.config.json',
@@ -19,9 +20,9 @@ var redisOptions = config.redisOptions || {};
 var tileCache = new tpCache(redisOptions);
 
 var tmpFileDir = Path.join(workDir, 'tmp');
-var eventManager = new Tilepin.EventManager();
+var eventEmitter = new events.EventEmitter();
 var options = {
-    eventManager : eventManager, // Centralized event manager
+    eventEmitter : eventEmitter, // Centralized event manager
     cache : tileCache, // Redis cache
     dir : workDir, // Working directory containing map layers
     tmpDir : tmpFileDir, // Used to generate PDF/SVG maps
@@ -46,14 +47,14 @@ var dir = __dirname;
 function trace(options) {
     console.log(options.eventName, options.arguments);
 }
-eventManager.on('getTile:begin', trace);
-eventManager.on('getTile:end', trace);
-// eventManager.on('loadTileSource:begin', trace);
-// eventManager.on('loadTileSource:end', trace);
-// eventManager.on('loadTileSource:loadFromCache', trace);
-// eventManager.on('loadTileSource:missedInCache', trace);
-// eventManager.on('loadTileSource:setInCache', trace);
-// eventManager.on('clearTileSource:clearCache', trace);
+eventEmitter.on('getTile:begin', trace);
+eventEmitter.on('getTile:end', trace);
+// eventEmitter.on('loadTileSource:begin', trace);
+// eventEmitter.on('loadTileSource:end', trace);
+// eventEmitter.on('loadTileSource:loadFromCache', trace);
+// eventEmitter.on('loadTileSource:missedInCache', trace);
+// eventEmitter.on('loadTileSource:setInCache', trace);
+// eventEmitter.on('clearTileSource:clearCache', trace);
 
 var tileProvider = new tp.TilesProvider(options);
 

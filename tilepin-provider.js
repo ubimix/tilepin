@@ -11,6 +11,7 @@ var Http = require('http');
 var Zlib = require('zlib');
 
 var Tilepin = require('./lib/');
+require('./lib/Tilepin.Events');
 
 var Carto = require('carto');
 var AdmZip = require('adm-zip');
@@ -342,6 +343,7 @@ _.extend(TileSourceProvider.prototype, {
                         if (!vectorTilesParams || !vectorTilesParams.length)
                             return uri;
 
+                        var manager = that.options.sourceManager;
                         function loadTileSource(prm) {
                             return Tilepin.P().then(function() {
                                 return manager.loadTileSourceProvider(prm) //
@@ -354,7 +356,6 @@ _.extend(TileSourceProvider.prototype, {
                                 });
                             });
                         }
-                        var manager = that.options.sourceManager;
                         return Tilepin.P.all(
                                 _.map(vectorTilesParams, loadTileSource))//
                         .then(
@@ -408,9 +409,9 @@ _.extend(TileSourceProvider.prototype, {
         return promise.then(function(tileSource) {
             if (!tileSource)
                 return;
-            var eventManager = that._getEventManager();
-            if (eventManager) {
-                eventManager.fire('TileSourceProvider:clearTileSource', {
+            var eventEmitter = that._getEventEmitter();
+            if (eventEmitter) {
+                eventEmitter.emit('TileSourceProvider:clearTileSource', {
                     eventName : 'TileSourceProvider:clearTileSource',
                     tileSource : tileSource,
                     provider : that
@@ -451,8 +452,8 @@ _.extend(TileSourceProvider.prototype, {
         if (!tileSource)
             return null;
         var that = this;
-        var eventManager = that._getEventManager();
-        if (eventManager) {
+        var eventEmitter = that._getEventEmitter();
+        if (eventEmitter) {
             var methods = _.map([ 'getTile', 'getGrid', 'getInfo' ], function(
                 name) {
                 return {
@@ -462,14 +463,14 @@ _.extend(TileSourceProvider.prototype, {
                 }
             });
             return Tilepin.Events.Mixin.addEventTracingWithCallbacks(
-                    tileSource, methods, eventManager);
+                    tileSource, methods, eventEmitter);
         } else {
             return tileSource;
         }
     },
 
-    _getEventManager : function() {
-        return this.options.eventManager;
+    _getEventEmitter : function() {
+        return this.options.eventEmitter;
     }
 
 })
@@ -490,7 +491,7 @@ function TileSourceManager() {
         this.initialize.apply(this, arguments);
     }
 }
-_.extend(TileSourceManager.prototype, Tilepin.Events, {
+_.extend(TileSourceManager.prototype, {
 
     type : 'TileSourceManager',
 
@@ -503,9 +504,9 @@ _.extend(TileSourceManager.prototype, Tilepin.Events, {
                 that._deleteTileSourceProvider(n);
             },
         });
-        var eventManager = that._getEventManager();
+        var eventEmitter = that._getEventEmitter();
         Tilepin.Events.Mixin.addEventTracing(that, [ 'loadTileSourceProvider',
-                'clearTileSourceProvider' ], eventManager);
+                'clearTileSourceProvider' ], eventEmitter);
     },
 
     /* ------------------------------ */
@@ -513,12 +514,12 @@ _.extend(TileSourceManager.prototype, Tilepin.Events, {
     /** Loads and returns a promise for a tile source */
     loadTileSourceProvider : function(params) {
         var that = this;
-        var eventManager = that._getEventManager();
+        var eventEmitter = that._getEventEmitter();
         return Tilepin.P().then(function() {
             var cacheKey = that._getCacheKey(params);
             var provider = that.sourceCache.get(cacheKey);
             if (provider) {
-                eventManager.fire('loadTileSourceProvider:loadFromCache', {
+                eventEmitter.emit('loadTileSourceProvider:loadFromCache', {
                     eventName : 'loadTileSourceProvider:loadFromCache',
                     arguments : [ params ],
                     provider : provider
@@ -526,7 +527,7 @@ _.extend(TileSourceManager.prototype, Tilepin.Events, {
                 return provider;
             }
             var provider = that._newTileSourceProvider(params);
-            eventManager.fire('loadTileSourceProvider:setInCache', {
+            eventEmitter.emit('loadTileSourceProvider:setInCache', {
                 eventName : 'loadTileSourceProvider:setInCache',
                 arguments : [ params ],
                 provider : provider
@@ -549,9 +550,9 @@ _.extend(TileSourceManager.prototype, Tilepin.Events, {
             }
             return provider;
         }).then(function(provider) {
-            var eventManager = that._getEventManager();
+            var eventEmitter = that._getEventEmitter();
             var eventName = 'clearTileSourceProvider:clearCache';
-            eventManager.fire(eventName, {
+            eventEmitter.emit(eventName, {
                 eventName : eventName,
                 arguments : [ params ],
                 provider : provider
@@ -584,9 +585,9 @@ _.extend(TileSourceManager.prototype, Tilepin.Events, {
         return key;
     },
 
-    _getEventManager : function() {
-        var eventManager = this.options.eventManager || this;
-        return eventManager;
+    _getEventEmitter : function() {
+        var eventEmitter = this.options.eventEmitter || this;
+        return eventEmitter;
     },
 
     _getTileSourceCacheTTL : function() {
@@ -607,7 +608,7 @@ _.extend(TileSourceManager.prototype, Tilepin.Events, {
         var provider = new TileSourceProvider(_.extend({}, that.options, {
             sourceKey : sourceKey,
             projectDir : projectDir,
-            eventManager : that._getEventManager(),
+            eventEmitter : that._getEventEmitter(),
             sourceManager : that
         }));
         return provider;
