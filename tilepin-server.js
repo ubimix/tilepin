@@ -1,4 +1,5 @@
 var express = require('express');
+var Mosaic = require('mosaic-commons');
 var Tilepin = require('./lib/');
 var _ = require('underscore');
 var app = express();
@@ -9,6 +10,8 @@ var tp = require('./tilepin');
 var tpCache = require('./tilepin-cache-redis');
 var MapExport = require('./tilepin-export');
 var events = require('events');
+
+
 
 var workDir = process.cwd();
 var config = loadConfig(workDir, [ 'tilepin.config.js', 'tilepin.config.json',
@@ -161,20 +164,15 @@ promise = promise
         });
     }));
 
-    mask = '/service/:source([^]+)/.:service([^]+)';
+    mask = '/service/:service([^]+)';
+    var serviceOptions = _.extend({}, options, {
+        path : '/service'
+    });
+    var handlerProvider = new Tilepin.ServiceStubProvider(serviceOptions);
     app.get(mask, handleRequest(function(req, res) {
-        var source = req.params.source;
-        var service = req.params.service;
-        var params = {
-            source : source,
-            service : service
-        };
-        // * Load config corresponding to the specified source
-        // * Load an endpoint description for the specified service
-        // * Pre-process query for specified parameters
-        // * Launch the query and return results
-        return mapExport.generateMap(params).then(function(result) {
-            return sendReply(req, res, 200, result.file, result.headers);
+        var path = Mosaic.ApiDescriptor.HttpServerStub.getPath(req);
+        return handlerProvider.loadEndpoint(path).then(function(handler) {
+            return handler.handle(req, res);
         });
     }));
 
