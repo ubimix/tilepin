@@ -25,6 +25,7 @@ var eventEmitter = new events.EventEmitter();
 
 var dbConfig = config.db || {};
 var options = {
+    config : config,
     eventEmitter : eventEmitter, // Centralized event manager
     cache : tileCache, // Redis cache
     dir : workDir, // Working directory containing map layers
