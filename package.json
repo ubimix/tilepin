@@ -33,6 +33,10 @@
         "sphericalmercator" : "~1.0.2",
         "tilejson" : "*",
         "underscore" : "~1.4.4",
+        "tilelive" : "*",
+        "tilelive-bridge" : "*",
+        "tilelive-mapnik" : "*",
+        "tilelive-vector" : "*",
         "when" : "*",
         "pg.js" : "*"
     },
