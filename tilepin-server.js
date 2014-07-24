@@ -30,7 +30,6 @@ var options = {
     dir : workDir, // Working directory containing map layers
     tmpDir : tmpFileDir, // Used to generate PDF/SVG maps
 
-    config : config,
     getDbCredentials : function(sourceKey) {
         return _.defaults({}, dbConfig[sourceKey], dbConfig['*']);
     },
@@ -38,15 +37,9 @@ var options = {
     handleDatalayer : function(options) {
         var dataLayer = options.dataLayer;
         if (dataLayer.Datasource && dataLayer.Datasource.type == 'postgis') {
-            var db = config.db || {};
-            if (_.isFunction(db)) {
-                db.call(config, options);
-            } else {
-                var projectConf = options.config;
-                var sourceKey = options.params.source;
-                var dbParams = db[sourceKey];
-                _.extend(dataLayer.Datasource, dbParams);
-            }
+            var sourceKey = options.params.source;
+            var credentials = this.getDbCredentials(sourceKey);
+            _.extend(dataLayer.Datasource, credentials);
         }
     }
 };
