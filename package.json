@@ -21,6 +21,8 @@
         "carto" : "~0.11.0",
         "express" : "*",
         "cookie-parser" : "*",
+        "body-parser" : "*",
+        
         "generic-pool" : "~2.1.0",
         "hiredis" : "*",
         "js-yaml" : "~3.0.2",

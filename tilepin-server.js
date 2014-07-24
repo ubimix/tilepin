@@ -1,8 +1,10 @@
 var express = require('express');
+var bodyParser = require('body-parser');
+var cookieParser = require('cookie-parser');
+
 var Mosaic = require('mosaic-commons');
 var Tilepin = require('./lib/');
 var _ = require('underscore');
-var app = express();
 var Url = require('url');
 var FS = require('fs');
 var Path = require('path');
@@ -61,15 +63,26 @@ eventEmitter.on('getTile:end', trace);
 
 var tileProvider = new tp.TilesProvider(options);
 
-var promise = Tilepin.P();
-promise = promise
-//
-.then(function initApplication(tileSource) {
+var promise = Tilepin.P
+// Create an Express instance
+.then(function() {
+    var app = express();
+    app.use(bodyParser.urlencoded({
+        extended : false
+    }));
+    app.use(bodyParser.json());
+    app.use(cookieParser('optional secret string'));
+
     app.use(function(req, res, next) {
         res.setHeader('Access-Control-Allow-Origin', '*');
         return next();
     });
     app.use(express.static(workDir + '/'));
+
+    return app;
+})
+// Initialize custom endpoints
+.then(function(app) {
 
     var mask;
 
