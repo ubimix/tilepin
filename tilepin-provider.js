@@ -21,7 +21,11 @@ var Tilelive = require('tilelive');
 var extensions = [ 'tilelive-mapnik', 'tilelive-vector', 'tilelive-bridge',
         'tilejson' ];
 _.each(extensions, function(extension) {
-    (require(extension)).registerProtocols(Tilelive);
+    try {
+        (require(extension)).registerProtocols(Tilelive);
+    } catch (e) {
+        console.log(e);
+    }
 });
 
 function CompositeTileSource(tileSources, interactiveLayer) {
