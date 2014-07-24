@@ -178,7 +178,7 @@ promise = promise
     }));
 
     mask = '/service/:service([^]*)';
-    app.get(mask, handleRequest(function(req, res) {
+    app.all(mask, handleRequest(function(req, res) {
         var path = Mosaic.ApiDescriptor.HttpServerStub.getPath(req);
         return handlerProvider.loadEndpoint(path).then(function(handler) {
             return handler.handle(req, res);
