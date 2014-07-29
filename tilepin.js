@@ -28,7 +28,9 @@ _.extend(TilesProvider.prototype, {
             return that._getFormats(params).then(function(formats) {
                 return Tilepin.P.all(_.map(formats, function(format) {
                     var cacheKey = provider.getCacheKey(params, format);
-                    cacheKeys.push(cacheKey);
+                    if (cacheKey) {
+                        cacheKeys.push(cacheKey);
+                    }
                 }));
             });
         }).then(function() {
