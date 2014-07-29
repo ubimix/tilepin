@@ -227,13 +227,14 @@ _.extend(TileSourceProvider.prototype, {
 
     open : function() {
         var that = this;
-        return Tilepin.P().then(function() {
-            return that._loadProject();
-        }).then(function(project) {
-            return project.open();
-        }).then(function() {
-            return that;
-        });
+        return that._openProjectPromise = that._openProjectPromise
+                || Tilepin.P().then(function() {
+                    return that._loadProject();
+                }).then(function(project) {
+                    return project.open();
+                }).then(function() {
+                    return that;
+                });
     },
 
     close : function(params) {
@@ -258,7 +259,8 @@ _.extend(TileSourceProvider.prototype, {
         return Tilepin.P().then(function() {
             var project = that._project;
             delete that._project;
-            delete that._projectPromise;
+            delete that._loadProjectPromise;
+            delete that._openProjectPromise;
             if (project) {
                 return project.close();
             }
@@ -268,8 +270,8 @@ _.extend(TileSourceProvider.prototype, {
     /** Loads the project. */
     _loadProject : function() {
         var that = this;
-        return that._projectPromise = that._projectPromise || Tilepin.P()//
-        .then(function() {
+        return that._loadProjectPromise = that._loadProjectPromise || // 
+        Tilepin.P().then(function() {
             if (!that._project) {
                 var projectDir = that._getProjectDir();
                 var options = _.extend({}, that.options, {
@@ -502,7 +504,8 @@ _.extend(TileSourceManager.prototype, {
     initialize : function(options) {
         var that = this;
         that.options = options || {};
-        that.sourceCache = new LRU({
+        that._providerPromises = {};
+        that._providerCache = new LRU({
             maxAge : that._getTileSourceCacheTTL(),
             dispose : function(key, n) {
                 that._deleteTileSourceProvider(n);
@@ -518,10 +521,10 @@ _.extend(TileSourceManager.prototype, {
     /** Loads and returns a promise for a tile source */
     loadTileSourceProvider : function(params) {
         var that = this;
-        var eventEmitter = that._getEventEmitter();
         return Tilepin.P().then(function() {
             var cacheKey = that._getCacheKey(params);
-            var provider = that.sourceCache.get(cacheKey);
+            var eventEmitter = that._getEventEmitter();
+            var provider = that._providerCache.get(cacheKey);
             if (provider) {
                 eventEmitter.emit('loadTileSourceProvider:loadFromCache', {
                     eventName : 'loadTileSourceProvider:loadFromCache',
@@ -530,16 +533,20 @@ _.extend(TileSourceManager.prototype, {
                 });
                 return provider;
             }
-            var provider = that._newTileSourceProvider(params);
-            eventEmitter.emit('loadTileSourceProvider:setInCache', {
-                eventName : 'loadTileSourceProvider:setInCache',
-                arguments : [ params ],
-                provider : provider
+            return that._providerPromises[cacheKey] = //
+            that._providerPromises[cacheKey] || //
+            Tilepin.P.fin(Tilepin.P.then(function() {
+                var provider = that._newTileSourceProvider(params);
+                eventEmitter.emit('loadTileSourceProvider:setInCache', {
+                    eventName : 'loadTileSourceProvider:setInCache',
+                    arguments : [ params ],
+                    provider : provider
+                });
+                that._providerCache.set(cacheKey, provider);
+                return provider.open();
+            }), function() {
+                delete that._providerPromises[cacheKey];
             });
-            that.sourceCache.set(cacheKey, provider);
-            return provider.open();
-        }).then(function(provider) {
-            return provider;
         });
     },
 
@@ -548,29 +555,30 @@ _.extend(TileSourceManager.prototype, {
         var that = this;
         return Tilepin.P().then(function() {
             var cacheKey = that._getCacheKey(params);
-            var provider = that.sourceCache.get(cacheKey);
-            if (!provider) {
-                provider = that._newTileSourceProvider(params);
-            }
-            return provider;
-        }).then(function(provider) {
-            var eventEmitter = that._getEventEmitter();
-            var eventName = 'clearTileSourceProvider:clearCache';
-            eventEmitter.emit(eventName, {
-                eventName : eventName,
-                arguments : [ params ],
-                provider : provider
+            var provider = null;
+            return Tilepin.P.fin(that.loadTileSourceProvider(params)//
+            .then(function(p) {
+                provider = p;
+            }, function(err) {
+                provider = that._providerCache.get(cacheKey);
+                // We ignore errors rised while openining the provider.
+                if (!provider) {
+                    throw err;
+                }
+            }).then(function() {
+                var eventEmitter = that._getEventEmitter();
+                var eventName = 'clearTileSourceProvider:clearCache';
+                eventEmitter.emit(eventName, {
+                    eventName : eventName,
+                    arguments : [ params ],
+                    provider : provider
+                });
+                return provider.clear(params).then(function() {
+                    return provider.close(params);
+                });
+            }), function() {
+                that._providerCache.del(cacheKey);
             });
-            return provider.clear(params).then(function() {
-                return provider.close(params);
-            });
-        }).then(function() {
-            var cacheKey = that._getCacheKey(params);
-            that.sourceCache.del(cacheKey);
-        }, function(err) {
-            var cacheKey = that._getCacheKey(params);
-            that.sourceCache.del(cacheKey);
-            throw err;
         });
     },
 
