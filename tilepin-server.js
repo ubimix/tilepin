@@ -11,6 +11,8 @@ var Tilepin = require('./tilepin');
 var TilepinCache = require('./tilepin-cache-redis');
 var MapExport = require('./tilepin-export');
 
+var ServiceStubProvider = require('./tilepin-services');
+
 var workDir = process.cwd();
 var config = loadConfig(workDir, [ 'tilepin.config.js', 'tilepin.config.json',
         'config.js', 'config.json' ]);
@@ -151,6 +153,27 @@ promise = promise
         // })
     })
 
+    var serviceOptions = _.extend({}, options, {
+        path : '/service'
+    });
+    var handlerProvider = new ServiceStubProvider(serviceOptions);
+
+    mask = '/service/:service([^]*).invalidate';
+    app.get(mask, handleRequest(function(req, res) {
+        var path = ServiceStubProvider.getPath(req);
+        return handlerProvider.removeEndpoint(path).then(function() {
+            return sendReply(req, res, 200, 'OK');
+        });
+    }));
+
+    mask = '/service/:service([^]*)';
+    app.all(mask, handleRequest(function(req, res) {
+        var path = ServiceStubProvider.getPath(req);
+        return handlerProvider.loadEndpoint(path).then(function(handler) {
+            return handler.handle(req, res);
+        });
+    }));
+
     mask = '/export/:source([^]+)/:zoom/' //
             + ':west,:south,:east,:north' //
             + '/:file.:format(svg|pdf|png)';
@@ -199,6 +222,16 @@ process.on('SIGTERM', function() {
         console.log("Server is down.");
     }).done();
 });
+
+function handleRequest(action) {
+    return function(req, res) {
+        return Commons.P().then(function() {
+            return action(req, res);
+        }).then(null, function(err) {
+            sendError(req, res, err);
+        }).done();
+    }
+}
 
 function sendError(req, res, err) {
     var statusCode = 400;
