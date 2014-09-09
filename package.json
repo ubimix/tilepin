@@ -1,59 +1,69 @@
 {
-    "name" : "tilepin",
-    "version" : "0.1.0",
-    "main" : "tilepin.js",
-    "description" : "Tilepin caching server",
-    "url" : "http://github.com/ubimix/tilepin",
-    "keywords" : [ "map", "server", "mapnik" ],
-    "licenses" : [ {
-        "type" : "BSD"
-    } ],
-    "repository" : {
-        "type" : "git",
-        "url" : "http://github.com/tilepin/tilepin.git"
-    },
-    "contributors" : [ {
-        "name" : "Mikhail Kotelnikov",
-        "email" : "mikhail.kotelnikov"
-    } ],
-    "dependencies" : {
-        "underscore" : "*",
-        "express" : "*",
-        "tilelive" : "*",
-        "tilelive-mapnik" : "*",
-        "tilelive-vector" : "*",
-        "tilelive-bridge" : "*",
-        "tilejson" : "*",
-        "mosaic-commons" : "*",
-        "mosaic-teleport" : "*",
-        "sphericalmercator": "~1.0.2",
-        "carto" : "~0.11.0",
-        "js-yaml": "~3.0.2",
-        "mapnik": ">=0.7.25 && <1.5.0",
-        "when" : "*",
-        "lru-cache" : "*",
-        "redis" : "*",
-        "hiredis" : "*",
-        "adm-zip" : "*"
-    },
-    "devDependencies" : {
-        "mocha" : "*",
-        "superagent" : "*",
-        "expect.js" : "*",
-        "cheerio" : "*"
-    },
-    "engines" : {
-        "node" : ">= 0.6.13 < 0.11.0"
-    },
-    "scripts" : {
-        "test" : "mocha -R spec --timeout 10000 ./tests/Test*"
-    },
-    "readme" : "# tilepin\n\nCaching backend for [tilelive.js](http://github.com/mapbox/tilelive.js)\n",
-    "readmeFilename" : "README.md",
-    "bugs" : {
-        "url" : "https://github.com/ubimix/tilepin/issues"
-    },
-    "homepage" : "https://github.com/ubimix/tilepin",
-    "_id" : "tilepin@0.0.1",
-    "_from" : "tilepin@*"
+  "name": "tilepin",
+  "version": "0.1.0",
+  "main": "tilepin.js",
+  "description": "Tilepin caching server",
+  "url": "http://github.com/ubimix/tilepin",
+  "keywords": [
+    "map",
+    "server",
+    "mapnik"
+  ],
+  "licenses": [
+    {
+      "type": "BSD"
+    }
+  ],
+  "repository": {
+    "type": "git",
+    "url": "http://github.com/tilepin/tilepin.git"
+  },
+  "contributors": [
+    {
+      "name": "Mikhail Kotelnikov",
+      "email": "mikhail.kotelnikov"
+    }
+  ],
+  "dependencies": {
+    "underscore": "*",
+    "express": "*",
+    "tilelive": "*",
+    "tilelive-mapnik": "*",
+    "tilelive-vector": "*",
+    "tilelive-bridge": "*",
+    "tilejson": "*",
+    "mosaic-commons": "0.0.13",
+    "mosaic-teleport": "0.0.17",
+    "sphericalmercator": "~1.0.2",
+    "carto": "~0.11.0",
+    "js-yaml": "~3.0.2",
+    "mapnik": ">=0.7.25 && <1.5.0",
+    "when": "*",
+    "lru-cache": "*",
+    "redis": "*",
+    "hiredis": "*",
+    "adm-zip": "*",
+    "generic-pool": "^2.1.1",
+    "pg.js": "^3.4.2"
+  },
+  "devDependencies": {
+    "mocha": "*",
+    "superagent": "*",
+    "expect.js": "*",
+    "cheerio": "*"
+  },
+  "engines": {
+    "node": ">= 0.6.13 < 0.11.0"
+  },
+  "scripts": {
+    "test": "mocha -R spec --timeout 10000 ./tests/Test*"
+  },
+  "readme": "# tilepin\n\nCaching backend for [tilelive.js](http://github.com/mapbox/tilelive.js)\n",
+  "readmeFilename": "README.md",
+  "bugs": {
+    "url": "https://github.com/ubimix/tilepin/issues"
+  },
+  "homepage": "https://github.com/ubimix/tilepin",
+  "_id": "tilepin@0.0.1",
+  "_from": "tilepin@*"
 }
